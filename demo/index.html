@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7fb">
+    <title>ChangeGuard — Software change intelligence</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="ChangeGuard home">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><path d="M16 3 27 7v8c0 7-4.7 11.7-11 14C9.7 26.7 5 22 5 15V7l11-4Z"/><path d="m11 16 3.2 3.2L21.5 12"/></svg>
+          </span>
+          <span class="brand-name">ChangeGuard</span>
+        </a>
+        <div class="topbar-right">
+          <span class="local-indicator"><i></i> Local-first analysis</span>
+          <a class="top-link" href="/docs/demo.md" target="_blank" rel="noreferrer">Documentation <span aria-hidden="true">↗</span></a>
+        </div>
+      </header>
+
+      <main>
+        <section id="landing" class="landing">
+          <div class="hero-copy">
+            <div class="eyebrow"><span class="eyebrow-line"></span> UNDERSTAND THE CHANGE, NOT JUST THE DIFF</div>
+            <h1>ChangeGuard</h1>
+            <p class="hero-subtitle">AI-Powered Software Change Intelligence Agent</p>
+            <p class="hero-description">Analyze GitHub Pull Requests using code intelligence, RAG evidence retrieval, deterministic risk analysis, sandbox verification, and grounded AI investigation.</p>
+            <div class="hero-proof">
+              <span><b>01</b> Evidence-backed</span>
+              <span><b>02</b> Local-first</span>
+              <span><b>03</b> Read-only analysis</span>
+            </div>
+          </div>
+
+          <section class="analyze-card" aria-labelledby="analyze-title">
+            <div class="card-heading">
+              <div>
+                <div class="step-label">START AN ANALYSIS <span>01 / 01</span></div>
+                <h2 id="analyze-title">Analyze Pull Request</h2>
+              </div>
+              <span class="github-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 .9A11.1 11.1 0 0 0 .9 12c0 4.9 3.2 9.1 7.6 10.6.6.1.8-.2.8-.6v-2.1c-3.1.7-3.8-1.3-3.8-1.3-.5-1.3-1.2-1.7-1.2-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 .1.6 2.2 3.7 1.6.1-.8.4-1.3.7-1.6-2.5-.3-5.1-1.2-5.1-5.5 0-1.2.4-2.1 1.2-2.9-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3 1.1a10.3 10.3 0 0 1 5.4 0c2.1-1.4 3-1.1 3-1.1.6 1.6.2 2.8.1 3.1.8.8 1.2 1.7 1.2 2.9 0 4.3-2.6 5.2-5.1 5.5.4.3.8 1 .8 2v3c0 .4.2.7.8.6A11.1 11.1 0 0 0 23.1 12 11.1 11.1 0 0 0 12 .9Z"/></svg>
+              </span>
+            </div>
+            <form id="analysis-form">
+              <label class="field-label" for="repository">Repository</label>
+              <div class="input-wrap"><span class="input-prefix">github.com /</span><input id="repository" name="repository" autocomplete="off" placeholder="owner/repository" value="artham-bhardwaj/self-healing-platform" required></div>
+              <label class="field-label" for="pull-number">PR Number</label>
+              <div class="input-wrap pr-input"><span class="input-prefix">#</span><input id="pull-number" name="pull_number" type="number" min="1" placeholder="123" value="1" required></div>
+              <div class="options">
+                <label class="check-option"><input id="verify-option" type="checkbox"><span class="checkmark"></span><span><b>Run verification</b><small>Use the existing safe verification capability</small></span></label>
+                <label class="check-option"><input id="llm-option" type="checkbox"><span class="checkmark"></span><span><b>Enable local LLM investigation</b><small>Requires a running Ollama service and installed model</small></span></label>
+              </div>
+              <button id="analyze-button" class="button button-primary" type="submit"><span>Analyze Pull Request</span><span class="button-arrow">→</span></button>
+              <button id="demo-button" class="button button-secondary" type="button"><span class="sparkle">✳</span> Load Demo Analysis</button>
+              <p id="form-error" class="form-error" role="alert" hidden></p>
+              <p class="privacy-note"><span class="lock-icon">◇</span> Analysis runs locally. No repository changes are made.</p>
+            </form>
+          </section>
+          <div class="hero-orbit orbit-one"></div><div class="hero-orbit orbit-two"></div>
+          <div class="landing-bottom">
+            <span>FROM PULL REQUEST TO UNDERSTANDING</span>
+            <div class="mini-flow"><b>GitHub PR</b><i>→</i><b>Code graph</b><i>→</i><b>Evidence</b><i>→</i><b>Grounded report</b></div>
+          </div>
+        </section>
+
+        <section id="dashboard" class="dashboard" hidden>
+          <aside class="sidebar">
+            <div class="sidebar-label">ANALYSIS</div>
+            <a class="side-link active" href="#overview"><span class="nav-icon">▦</span> Overview</a>
+            <a class="side-link" href="#risk"><span class="nav-icon">◒</span> Risk analysis</a>
+            <a class="side-link" href="#api-impact"><span class="nav-icon">⌘</span> API impact</a>
+            <a class="side-link" href="#verification"><span class="nav-icon">✓</span> Verification</a>
+            <a class="side-link" href="#investigation"><span class="nav-icon">✳</span> AI investigation</a>
+            <div class="sidebar-bottom">
+              <div class="sidebar-help"><span>?</span><div><b>Need a walkthrough?</b><a href="/docs/demo.md" target="_blank">Read the demo guide ↗</a></div></div>
+              <button id="new-analysis" class="new-analysis">＋ New analysis</button>
+            </div>
+          </aside>
+          <div class="dashboard-content">
+            <div id="demo-banner" class="demo-banner" hidden><span class="demo-badge">DEMO</span> Sample analysis based on the real self-healing-platform PR #1. The report is an evidence-linked example, not a live LLM response.</div>
+            <section id="overview" class="dashboard-section overview-section">
+              <div class="breadcrumb">ANALYSIS <span>/</span> PULL REQUEST</div>
+              <div class="overview-heading">
+                <div>
+                  <div class="eyebrow"><span class="status-dot"></span><span id="pr-state">COMPLETED</span> <span class="heading-divider">·</span> <span id="pr-repo">repository</span></div>
+                  <h2 id="pr-title">Pull request analysis</h2>
+                  <p id="pr-subtitle" class="muted">Change intelligence report</p>
+                </div>
+                <a id="pr-link" class="button button-outline" target="_blank" rel="noreferrer">View on GitHub <span>↗</span></a>
+              </div>
+              <div class="pr-meta-grid">
+                <div class="meta-card"><span>PR NUMBER</span><b id="pr-number">—</b></div>
+                <div class="meta-card"><span>BASE SHA</span><b id="base-sha">—</b></div>
+                <div class="meta-card"><span>HEAD SHA</span><b id="head-sha">—</b></div>
+                <div class="meta-card"><span>CHANGED FILES</span><b id="changed-count">—</b></div>
+              </div>
+              <div class="section-title-row"><div><div class="section-kicker">CHANGE OVERVIEW</div><h3>What changed</h3></div><span class="subtle-chip">Commit-pinned analysis</span></div>
+              <p id="change-summary" class="change-summary"></p>
+              <div class="overview-grid">
+                <article class="panel">
+                  <div class="panel-heading"><div><span class="panel-icon file-icon">▤</span><h4>Changed files</h4></div><span id="file-count" class="count-pill">0</span></div>
+                  <ul id="changed-files" class="file-list"></ul>
+                </article>
+                <article class="panel">
+                  <div class="panel-heading"><div><span class="panel-icon symbol-icon">ƒ</span><h4>Changed symbols</h4></div><span id="symbol-count" class="count-pill">0</span></div>
+                  <ul id="changed-symbols" class="symbol-list"></ul>
+                </article>
+              </div>
+              <article class="panel impacted-panel">
+                <div class="panel-heading"><div><span class="panel-icon impact-icon">↗</span><h4>Impacted symbols &amp; consumers</h4></div><span id="impact-count" class="count-pill">0</span></div>
+                <div id="impacted-content" class="impacted-content"></div>
+              </article>
+            </section>
+
+            <section id="risk" class="dashboard-section">
+              <div class="section-title-row"><div><div class="section-kicker">DETERMINISTIC ASSESSMENT</div><h3>Risk analysis</h3><p class="muted">Transparent signals, explicit coverage. The score is not a production prediction.</p></div></div>
+              <div class="risk-layout">
+                <article class="panel risk-score-panel">
+                  <div class="risk-score-top"><span>OVERALL RISK</span><span id="risk-level" class="risk-level">LOW</span></div>
+                  <div class="score-row"><strong id="risk-score">—</strong><span>/ 100</span></div>
+                  <div class="score-track"><i id="score-fill"></i></div>
+                  <div class="coverage-row"><span>Evidence coverage</span><b id="risk-coverage">—</b></div>
+                  <p class="risk-caveat">A deterministic signal from available inputs—not a guarantee of safety.</p>
+                </article>
+                <article class="panel factor-panel">
+                  <div class="panel-heading"><div><span class="section-kicker">WEIGHTED CONTRIBUTIONS</span><h4>Risk factors</h4></div><span class="subtle-chip">Deterministic</span></div>
+                  <div id="risk-factors" class="factor-list"></div>
+                </article>
+              </div>
+              <div class="risk-lower-grid">
+                <article class="panel"><div class="panel-heading"><div><span class="panel-icon warn-icon">!</span><h4>Uncertainties</h4></div><span id="uncertainty-count" class="count-pill">0</span></div><ul id="uncertainties" class="bullet-list"></ul></article>
+                <article class="panel"><div class="panel-heading"><div><span class="panel-icon verify-icon">↗</span><h4>Recommended verification</h4></div></div><ul id="recommendations" class="bullet-list"></ul></article>
+              </div>
+            </section>
+
+            <section id="api-impact" class="dashboard-section">
+              <div class="section-title-row"><div><div class="section-kicker">CROSS-LANGUAGE CONTRACTS</div><h3>API impact</h3><p class="muted">Static relationships between Spring endpoints and frontend request sites.</p></div><span id="api-edge-count" class="subtle-chip">0 edges</span></div>
+              <div class="api-stats">
+                <div class="api-stat"><span>ENDPOINTS DISCOVERED</span><b id="endpoint-count">—</b><i>Spring mappings</i></div>
+                <div class="api-stat"><span>FRONTEND CONSUMERS</span><b id="consumer-count">—</b><i>Static request sites</i></div>
+                <div class="api-stat"><span>UNRESOLVED</span><b id="api-unresolved-count">—</b><i>Requires investigation</i></div>
+              </div>
+              <article class="panel changed-endpoints-panel">
+                <div class="panel-heading"><div><span class="panel-icon impact-icon">↗</span><h4>Changed endpoints</h4></div><span id="changed-endpoint-count" class="count-pill">0</span></div>
+                <div id="changed-endpoints" class="relationship-list"></div>
+              </article>
+              <article class="panel graph-panel">
+                <div class="panel-heading"><div><span class="section-kicker">DETECTED RELATIONSHIPS</span><h4>Endpoint → consumer graph</h4></div><div class="graph-legend"><span><i class="legend-backend"></i>Backend</span><span><i class="legend-frontend"></i>Frontend</span></div></div>
+                <div id="api-graph" class="api-graph"></div>
+              </article>
+              <div class="api-bottom-grid">
+                <article class="panel"><div class="panel-heading"><div><span class="panel-icon warn-icon">!</span><h4>Unresolved relationships</h4></div></div><div id="api-unresolved" class="relationship-list"></div></article>
+                <article class="panel"><div class="panel-heading"><div><span class="panel-icon impact-icon">↗</span><h4>Impacted frontend consumers</h4></div></div><div id="api-impacted" class="relationship-list"></div></article>
+              </div>
+            </section>
+
+            <section id="verification" class="dashboard-section">
+              <div class="section-title-row"><div><div class="section-kicker">OBSERVED CHECKS</div><h3>Verification</h3><p class="muted">Only executed checks count as evidence. Unsupported checks stay blocked.</p></div></div>
+              <article class="panel verification-panel">
+                <div class="verification-status"><span id="verification-icon" class="verification-icon">!</span><div><span class="section-kicker">VERIFICATION STATUS</span><h4 id="verification-status">Not run</h4><p id="verification-detail" class="muted"></p></div></div>
+                <div id="verification-checks" class="verification-checks"></div>
+                <div id="verification-evidence" class="verification-evidence"></div>
+              </article>
+            </section>
+
+            <section id="investigation" class="dashboard-section">
+              <div class="section-title-row"><div><div class="section-kicker">OPTIONAL LOCAL REASONING</div><h3>AI investigation</h3><p class="muted">A bounded, read-only tool investigation. Findings cite the available evidence.</p></div><span id="llm-status" class="subtle-chip">Not run</span></div>
+              <div class="investigation-layout">
+                <article class="panel"><div class="panel-heading"><div><span class="panel-icon tool-icon">⌘</span><h4>Tools used</h4></div><span id="tool-count" class="count-pill">0</span></div><div id="tool-list" class="tool-list"></div></article>
+                <article class="panel"><div class="panel-heading"><div><span class="panel-icon evidence-icon">◉</span><h4>Evidence retrieved</h4></div><span id="evidence-count" class="count-pill">0</span></div><div id="evidence-list" class="evidence-list"></div></article>
+              </div>
+              <article class="panel report-panel">
+                <div class="report-header"><div><div class="section-kicker">EVIDENCE-LINKED SUMMARY</div><h4>Grounded investigation report</h4></div><span id="report-mode" class="report-mode">Structured report</span></div>
+                <p id="report-summary" class="report-summary"></p>
+                <div class="report-columns"><div><h5>Findings</h5><div id="report-findings" class="finding-list"></div></div><div><h5>Recommended verification</h5><ul id="report-recommendations" class="bullet-list"></ul></div></div>
+                <div id="report-uncertainties" class="report-uncertainties"></div>
+              </article>
+            </section>
+            <footer class="dashboard-footer"><span>ChangeGuard · Local-first change intelligence</span><a href="/" id="footer-new-analysis">Start another analysis ↑</a></footer>
+          </div>
+        </section>
+      </main>
+      <div id="busy-overlay" class="busy-overlay" hidden><div class="spinner"></div><b>Analyzing pull request</b><span>Fetching immutable revisions and building evidence-backed impact…</span></div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </div>
+  </body>
+</html>

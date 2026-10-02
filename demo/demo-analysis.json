@@ -1,0 +1,269 @@
+{
+  "demo_fixture": true,
+  "status": "COMPLETED",
+  "repository": "artham-bhardwaj/self-healing-platform",
+  "pull_number": 1,
+  "base_sha": "5f1aff421495a54b07af0182758c9edd3ce73c3f",
+  "head_sha": "d969dd309fcd5e9c871f058670088d1291a35145",
+  "current_head_sha": "d969dd309fcd5e9c871f058670088d1291a35145",
+  "url": "https://github.com/artham-bhardwaj/self-healing-platform/pull/1",
+  "changed_files": [
+    "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java",
+    "self-healing-starter/src/test/java/com/youorg/selfhealing/incident/IncidentControllerTest.java"
+  ],
+  "analysis": {
+    "change_summary": "2 file(s) changed (+53/-1 lines); 2 Java file(s); 4 Java symbol declaration(s) intersect changed lines.",
+    "changed_files": [
+      "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java",
+      "self-healing-starter/src/test/java/com/youorg/selfhealing/incident/IncidentControllerTest.java"
+    ],
+    "changed_symbols": [
+      {
+        "qualified_name": "com.youorg.selfhealing.incident.IncidentController",
+        "kind": "type",
+        "file_path": "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java"
+      },
+      {
+        "qualified_name": "com.youorg.selfhealing.incident.IncidentController.getSummary()",
+        "kind": "method",
+        "file_path": "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java"
+      },
+      {
+        "qualified_name": "com.youorg.selfhealing.incident.IncidentControllerTest",
+        "kind": "type",
+        "file_path": "self-healing-starter/src/test/java/com/youorg/selfhealing/incident/IncidentControllerTest.java"
+      },
+      {
+        "qualified_name": "com.youorg.selfhealing.incident.IncidentControllerTest.summaryCountsOnlyResolvedIncidentsAndKeepsEscalatedSeparate()",
+        "kind": "method",
+        "file_path": "self-healing-starter/src/test/java/com/youorg/selfhealing/incident/IncidentControllerTest.java"
+      }
+    ],
+    "blast_radius": {
+      "direct_dependents": [],
+      "indirect_dependents": [],
+      "affected_files": [
+        "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java",
+        "self-healing-starter/src/test/java/com/youorg/selfhealing/incident/IncidentControllerTest.java",
+        "sample-application/src/main/resources/static/ops-console.js"
+      ],
+      "cross_language_api_consumers": [
+        "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3"
+      ],
+      "unresolved_relationships": 23
+    },
+    "risk_assessment": {
+      "overall_level": "LOW",
+      "score": 7.96,
+      "metrics": {
+        "score_weight_coverage": 0.4786
+      },
+      "factors": [
+        {
+          "factor": "change_complexity",
+          "normalized_value": 0.1034,
+          "weight": 30.0,
+          "contribution": 3.1,
+          "state": "known",
+          "reason": "Two changed files with a focused method and regression-test update."
+        },
+        {
+          "factor": "blast_radius",
+          "normalized_value": 0.04,
+          "weight": 25.0,
+          "contribution": 0.71,
+          "state": "uncertain",
+          "reason": "One known frontend consumer; 23 Java relationships remain unresolved."
+        },
+        {
+          "factor": "historical_evidence",
+          "normalized_value": 0.0,
+          "weight": 20.0,
+          "contribution": null,
+          "state": "uncertain",
+          "reason": "No relevant records were returned from the configured local evidence store."
+        },
+        {
+          "factor": "test_confidence",
+          "normalized_value": null,
+          "weight": 15.0,
+          "contribution": null,
+          "state": "unknown",
+          "reason": "No trusted test result was imported into this analysis."
+        },
+        {
+          "factor": "runtime_signals",
+          "normalized_value": null,
+          "weight": 10.0,
+          "contribution": null,
+          "state": "unknown",
+          "reason": "No runtime telemetry was available."
+        }
+      ],
+      "uncertainties": [
+        "23 unresolved Java call relationships affect changed or dependent symbols.",
+        "No relevant local historical evidence was retrieved.",
+        "Test and runtime signals are unknown."
+      ],
+      "recommendations": [
+        "Run and record the relevant project test suite.",
+        "Review the changed summary response and its frontend consumer."
+      ]
+    },
+    "api_impact": {
+      "metrics": {
+        "endpoints_discovered": 14,
+        "consumers_discovered": 13,
+        "api_consumer_edges": 10,
+        "ambiguous_matches": 0,
+        "unresolved_consumers": 1
+      },
+      "endpoints": [
+        {
+          "endpoint_id": "api:GET:/self-healing/incidents/summary:self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java::com.youorg.selfhealing.incident.IncidentController.getSummary()",
+          "http_method": "GET",
+          "route": "/self-healing/incidents/summary",
+          "declaring_type": "com.youorg.selfhealing.incident.IncidentController",
+          "declaring_method": "getSummary",
+          "source_file": "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java",
+          "source_line": 42
+        }
+      ],
+      "changed_endpoint_ids": [
+        "api:GET:/self-healing/incidents/summary:self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java::com.youorg.selfhealing.incident.IncidentController.getSummary()"
+      ],
+      "impacted_consumer_ids": [
+        "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3"
+      ],
+      "consumers": [
+        {
+          "consumer_id": "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3",
+          "source_file": "sample-application/src/main/resources/static/ops-console.js",
+          "http_method": "GET",
+          "route": "/self-healing/incidents/summary",
+          "source_line": 97
+        }
+      ],
+      "edges": [
+        {
+          "endpoint_id": "api:GET:/self-healing/incidents/summary:self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java::com.youorg.selfhealing.incident.IncidentController.getSummary()",
+          "endpoint_identity": "GET /self-healing/incidents/summary",
+          "target_node": "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3",
+          "source_node": "self-healing-starter/src/main/java/com/youorg/selfhealing/incident/IncidentController.java::com.youorg.selfhealing.incident.IncidentController.getSummary()",
+          "confidence": 0.95
+        }
+      ],
+      "ambiguous_relationships": [],
+      "unresolved_relationships": [
+        {
+          "status": "UNRESOLVED",
+          "reason": "The request method or URL is not statically known.",
+          "evidence_refs": [
+            "api-consumer:sample-application/src/main/resources/static/ops-console.js:285"
+          ]
+        }
+      ],
+      "uncertainties": [
+        "One dynamic frontend request could not be resolved deterministically."
+      ]
+    },
+    "historical_evidence": {
+      "status": "no_relevant_evidence",
+      "results": []
+    },
+    "investigation_state": {
+      "status": "sample",
+      "tool_calls": [
+        {
+          "tool_name": "get_git_diff",
+          "status": "success",
+          "reference": "pr-diff:d969dd309fcd5e9c871f058670088d1291a35145"
+        },
+        {
+          "tool_name": "get_java_sources",
+          "status": "success",
+          "reference": "source:IncidentController.java:getSummary"
+        },
+        {
+          "tool_name": "search_evidence",
+          "status": "success",
+          "reference": "history:no_relevant_evidence"
+        }
+      ]
+    },
+    "investigation_report": {
+      "summary": "The change corrects how the incident summary reports resolved incidents. The API endpoint is consumed by the operations console; the available analysis does not establish production behavior or runtime outcomes.",
+      "summary_evidence_refs": [
+        "source:IncidentController.java:getSummary",
+        "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3"
+      ],
+      "findings": [
+        {
+          "statement": "The summary endpoint now counts incidents with RESOLVED status directly, rather than treating every non-active incident as resolved.",
+          "evidence_refs": [
+            "source:IncidentController.java:getSummary",
+            "test:IncidentControllerTest.summaryCountsOnlyResolvedIncidentsAndKeepsEscalatedSeparate"
+          ]
+        },
+        {
+          "statement": "The operations console requests GET /self-healing/incidents/summary and displays the resolvedIncidents value.",
+          "evidence_refs": [
+            "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3",
+            "api:GET:/self-healing/incidents/summary"
+          ]
+        }
+      ],
+      "evidence": [
+        {
+          "reference": "source:IncidentController.java:getSummary",
+          "tool_name": "get_java_sources",
+          "description": "Changed summary implementation in the pinned PR head."
+        },
+        {
+          "reference": "test:IncidentControllerTest.summaryCountsOnlyResolvedIncidentsAndKeepsEscalatedSeparate",
+          "tool_name": "get_java_sources",
+          "description": "Regression test distinguishing resolved, escalated, and active incidents."
+        },
+        {
+          "reference": "api-consumer:sample-application/src/main/resources/static/ops-console.js:97:3",
+          "tool_name": "get_revision_file",
+          "description": "Static request consumer and summary-field display in the operations console."
+        }
+      ],
+      "uncertainties": [
+        "The PR analysis did not execute Java/Maven verification; the configured verifier reports this project as unsupported.",
+        "No live Ollama investigation was performed for this sample."
+      ],
+      "recommended_verification": [
+        "Run mvn test in the repository to verify the changed summary behavior.",
+        "Confirm the operations console renders the resolved count for mixed incident states."
+      ],
+      "tool_trace": [
+        "get_git_diff",
+        "get_java_sources",
+        "search_evidence"
+      ]
+    },
+    "verification_plan": {
+      "status": "UNSUPPORTED_PROJECT",
+      "limitations": [
+        "The current verifier supports Python pytest and py_compile checks only."
+      ]
+    },
+    "verification_result": {
+      "status": "BLOCKED",
+      "checks": [],
+      "limitations": [
+        "No verification checks were executed for this Java/Maven project."
+      ]
+    },
+    "uncertainties": [
+      "Historical evidence retrieval returned no relevant records.",
+      "Verification is unsupported for this Java/Maven project.",
+      "No local LLM was run for the saved real-PR analysis."
+    ],
+    "recommended_verification": [
+      "Run mvn test in the repository."
+    ]
+  }
+}

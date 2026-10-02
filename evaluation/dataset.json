@@ -1,0 +1,4 @@
+[
+  {"query":"database connection pool timeout","relevant_evidence":["INC-001"]},
+  {"query":"payment downstream retry failure","relevant_evidence":["INC-002"]}
+]
