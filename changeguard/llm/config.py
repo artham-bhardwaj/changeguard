@@ -39,3 +39,30 @@ class OllamaConfig:
             model=os.getenv("CHANGEGUARD_MODEL", "qwen2.5:1.5b"),
             timeout_seconds=timeout_seconds,
         )
+
+
+@dataclass(frozen=True)
+class GeminiConfig:
+    model: str = "gemini-3.5-flash"
+    timeout_seconds: float = 30.0
+    max_requests: int = 3
+    max_output_tokens: int = 800
+
+    def __post_init__(self) -> None:
+        if not self.model.strip(): raise ValueError("Gemini model name must not be empty")
+        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0: raise ValueError("Gemini timeout must be greater than zero")
+        if not 1 <= self.max_requests <= 3: raise ValueError("Gemini max requests must be between 1 and 3")
+        if not 1 <= self.max_output_tokens <= 1200: raise ValueError("Gemini max output tokens must be between 1 and 1200")
+
+    @classmethod
+    def from_env(cls) -> "GeminiConfig":
+        return cls(os.getenv("CHANGEGUARD_GEMINI_MODEL", "gemini-3.5-flash"), float(os.getenv("CHANGEGUARD_GEMINI_TIMEOUT_SECONDS", "30")), int(os.getenv("CHANGEGUARD_GEMINI_MAX_REQUESTS", "3")), int(os.getenv("CHANGEGUARD_GEMINI_MAX_OUTPUT_TOKENS", "800")))
+
+
+def load_local_env(path: str = ".env") -> None:
+    try:
+        with open(path, encoding="utf-8") as source:
+            for line in source:
+                name, separator, value = line.strip().partition("=")
+                if separator and name and not name.startswith("#"): os.environ.setdefault(name, value)
+    except FileNotFoundError: return

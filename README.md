@@ -82,6 +82,21 @@ Then open <http://127.0.0.1:8000> in a browser.
 
 For a private repository, set `GITHUB_TOKEN` in the local environment before starting the demo server. The browser never receives GitHub credentials.
 
+### Optional Gemini investigation
+
+Gemini is disabled by default; deterministic analysis remains local and makes no API calls. To opt in, keep `GEMINI_API_KEY` in the ignored local `.env` file and run:
+
+```sh
+python -m changeguard.cli impact \
+  --repo ./repo \
+  --base BASE_SHA \
+  --head HEAD_SHA \
+  --llm \
+  --llm-provider gemini
+```
+
+The Gemini provider only receives bounded investigation prompts and read-only MCP results. It is limited to one MCP tool call, 12,000 prompt characters, 800 output tokens, and a three-request budget per analysis. If its API request, quota, or response fails, ChangeGuard retains the deterministic analysis rather than failing the run. The key is never persisted, logged, or committed.
+
 ## Example Output
 
 ```text

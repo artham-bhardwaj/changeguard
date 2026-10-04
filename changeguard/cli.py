@@ -2,18 +2,20 @@ from __future__ import annotations
 import argparse,json,os,sys
 from changeguard.agent import DeterministicAgent
 from changeguard.analysis import ChangeAnalysisService
-from changeguard.llm import OllamaLLMAdapter, OllamaLLMClient
+from changeguard.llm import GeminiLLMAdapter, OllamaLLMAdapter, OllamaLLMClient, load_local_env
 from changeguard.llm.agent import BoundedInvestigationAgent
 from changeguard.llm.agent import ToolUsingAgent
 from changeguard.mcp import MCPToolPort
 from changeguard.storage import SQLiteAnalysisStore
 from changeguard.github import GitHubAPIAdapter, PullRequestAnalysisService, PullRequestRef
 def main()->None:
+    load_local_env()
     parser=argparse.ArgumentParser(); sub=parser.add_subparsers(dest="command"); analyze=sub.add_parser("analyze")
     analyze.add_argument("--repo",required=True); analyze.add_argument("--base",required=True); analyze.add_argument("--head",required=True); analyze.add_argument("--agent",choices=["llm","deterministic"],default="deterministic"); analyze.add_argument("--database",default="changeguard.sqlite3")
     impact=sub.add_parser("impact",help="run end-to-end deterministic change impact analysis")
     impact.add_argument("--repo",required=True); impact.add_argument("--base",required=True); impact.add_argument("--head",required=True)
     impact.add_argument("--database",default="changeguard.sqlite3"); impact.add_argument("--llm",action="store_true")
+    impact.add_argument("--llm-provider",choices=["ollama","gemini"],default="ollama")
     impact.add_argument("--max-tool-calls",type=int,default=3)
     impact.add_argument("--verify",action="store_true",help="explicitly execute planned verification in an isolated sandbox")
     evaluate=sub.add_parser("evaluate",help="run authored local evaluation fixtures")
@@ -97,7 +99,7 @@ def main()->None:
         mcp=MCPToolPort(evidence_database=args.database)
         investigator=(
             BoundedInvestigationAgent(
-                OllamaLLMAdapter(),mcp,max_tool_calls=args.max_tool_calls
+                GeminiLLMAdapter() if args.llm_provider=="gemini" else OllamaLLMAdapter(),mcp,max_tool_calls=min(args.max_tool_calls,1) if args.llm_provider=="gemini" else args.max_tool_calls
             )
             if args.llm else None
         )
