@@ -2,7 +2,7 @@ from __future__ import annotations
 import argparse,json,os,sys
 from changeguard.agent import DeterministicAgent
 from changeguard.analysis import ChangeAnalysisService
-from changeguard.llm import GeminiLLMAdapter, OllamaLLMAdapter, OllamaLLMClient, load_local_env
+from changeguard.llm import LLM_PROVIDERS, OllamaLLMClient, create_llm_adapter, default_llm_provider, load_local_env, max_tool_calls_for
 from changeguard.llm.agent import BoundedInvestigationAgent
 from changeguard.llm.agent import ToolUsingAgent
 from changeguard.mcp import MCPToolPort
@@ -10,12 +10,17 @@ from changeguard.storage import SQLiteAnalysisStore
 from changeguard.github import GitHubAPIAdapter, PullRequestAnalysisService, PullRequestRef
 def main()->None:
     load_local_env()
-    parser=argparse.ArgumentParser(); sub=parser.add_subparsers(dest="command"); analyze=sub.add_parser("analyze")
+    parser=argparse.ArgumentParser(prog="changeguard"); sub=parser.add_subparsers(dest="command"); analyze=sub.add_parser("analyze")
+    try:
+        llm_provider_default=default_llm_provider()
+    except ValueError as error:
+        parser.error(str(error))
+    llm_provider_help=f"LLM used with --llm (default: {llm_provider_default}; set CHANGEGUARD_LLM_PROVIDER to change)"
     analyze.add_argument("--repo",required=True); analyze.add_argument("--base",required=True); analyze.add_argument("--head",required=True); analyze.add_argument("--agent",choices=["llm","deterministic"],default="deterministic"); analyze.add_argument("--database",default="changeguard.sqlite3")
     impact=sub.add_parser("impact",help="run end-to-end deterministic change impact analysis")
     impact.add_argument("--repo",required=True); impact.add_argument("--base",required=True); impact.add_argument("--head",required=True)
     impact.add_argument("--database",default="changeguard.sqlite3"); impact.add_argument("--llm",action="store_true")
-    impact.add_argument("--llm-provider",choices=["ollama","gemini"],default="ollama")
+    impact.add_argument("--llm-provider",choices=LLM_PROVIDERS,default=llm_provider_default,help=llm_provider_help)
     impact.add_argument("--max-tool-calls",type=int,default=3)
     impact.add_argument("--verify",action="store_true",help="explicitly execute planned verification in an isolated sandbox")
     evaluate=sub.add_parser("evaluate",help="run authored local evaluation fixtures")
@@ -32,12 +37,18 @@ def main()->None:
     pr_analyze.add_argument("pull_request")
     pr_analyze.add_argument("--database",default="changeguard.sqlite3")
     pr_analyze.add_argument("--verify",action="store_true",help="opt in to safe sandboxed verification")
-    pr_analyze.add_argument("--llm",action="store_true",help="opt in to local Ollama investigation")
+    pr_analyze.add_argument("--llm",action="store_true",help="opt in to LLM investigation")
+    pr_analyze.add_argument("--llm-provider",choices=LLM_PROVIDERS,default=llm_provider_default,help=llm_provider_help)
     pr_analyze.add_argument("--persist",action="store_true",help="persist/cache completed exact-revision results")
     pr_analyze.add_argument("--json",action="store_true",help="emit the structured result as JSON")
     pr_analyze.add_argument("--refresh-head",action=argparse.BooleanOptionalAction,default=True,
                             help="check the PR head again after analysis (default: enabled)")
+    sub.add_parser("demo",help="start the local browser demo (http://127.0.0.1:8000)")
     args=parser.parse_args()
+    if args.command=="demo":
+        from changeguard.demo_server import main as demo_main
+        demo_main()
+        return
     if args.command=="pr":
         if args.pr_command!="analyze":
             parser.error("use: changeguard pr analyze OWNER/REPO#NUMBER")
@@ -48,7 +59,7 @@ def main()->None:
         token=os.environ.get("GITHUB_TOKEN")
         store=SQLiteAnalysisStore(args.database)
         result=PullRequestAnalysisService(
-            GitHubAPIAdapter(token=token),store,token=token
+            GitHubAPIAdapter(token=token),store,token=token,llm_provider=args.llm_provider
         ).analyze(
             reference,verify=args.verify,llm=args.llm,persist=args.persist,
             refresh_head=args.refresh_head,
@@ -99,7 +110,7 @@ def main()->None:
         mcp=MCPToolPort(evidence_database=args.database)
         investigator=(
             BoundedInvestigationAgent(
-                GeminiLLMAdapter() if args.llm_provider=="gemini" else OllamaLLMAdapter(),mcp,max_tool_calls=min(args.max_tool_calls,1) if args.llm_provider=="gemini" else args.max_tool_calls
+                create_llm_adapter(args.llm_provider),mcp,max_tool_calls=max_tool_calls_for(args.llm_provider,args.max_tool_calls)
             )
             if args.llm else None
         )
@@ -111,7 +122,9 @@ def main()->None:
             result=service.verify(result)
         print(json.dumps({"mode":"llm_enhanced" if args.llm else "deterministic","analysis":result.to_dict()},indent=2))
         return
-    if args.command!="analyze": parser.error("use: changeguard analyze")
+    if args.command!="analyze":
+        parser.print_help()
+        raise SystemExit(2)
     store=SQLiteAnalysisStore(args.database)
     if args.agent=="deterministic":
         state=DeterministicAgent(store).investigate(repo_path=args.repo,base=args.base,head=args.head); print(json.dumps({"mode":"deterministic","analysis":state.to_dict()},indent=2)); return

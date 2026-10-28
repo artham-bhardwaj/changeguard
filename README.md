@@ -69,33 +69,47 @@ The local demo is a lightweight, browser-based presentation layer around the exi
 
 ## Running locally
 
-Python 3.12 or later is recommended.
+Python 3.12 or later is required.
 
 ```sh
 python -m venv .venv
 . .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m changeguard.demo_server
+python -m pip install -e ".[dev]"   # or: python -m pip install -r requirements.txt
+cp .env.example .env                # optional: add GITHUB_TOKEN / GEMINI_API_KEY
+changeguard demo
 ```
 
 Then open <http://127.0.0.1:8000> in a browser.
 
-For a private repository, set `GITHUB_TOKEN` in the local environment before starting the demo server. The browser never receives GitHub credentials.
+For a private repository, set `GITHUB_TOKEN` in `.env` or the environment before starting the demo server. The browser never receives GitHub credentials.
 
-### Optional Gemini investigation
+ChangeGuard reads `.env` from the current directory or its parents (up to the git root), or from the path in `CHANGEGUARD_ENV_FILE`. Variables already set in the environment take precedence. See [`.env.example`](.env.example) for every setting.
 
-Gemini is disabled by default; deterministic analysis remains local and makes no API calls. To opt in, keep `GEMINI_API_KEY` in the ignored local `.env` file and run:
+### Command-line usage
 
 ```sh
-python -m changeguard.cli impact \
-  --repo ./repo \
-  --base BASE_SHA \
-  --head HEAD_SHA \
-  --llm \
-  --llm-provider gemini
+changeguard pr analyze OWNER/REPO#123              # analyze a GitHub pull request
+changeguard impact --repo . --base HEAD~1 --head HEAD   # analyze a local commit range
+changeguard evaluate --all                          # run the local evaluation fixtures
+python -m pytest                                    # run the test suite
 ```
 
+### Optional LLM investigation
+
+Deterministic analysis is the default and makes no LLM calls. Add `--llm` to `pr analyze` or `impact` (or tick the LLM option in the demo) to add a bounded AI investigation. Choose the provider with `--llm-provider ollama|gemini` or set `CHANGEGUARD_LLM_PROVIDER` in `.env`; the demo always uses `CHANGEGUARD_LLM_PROVIDER`.
+
+- **Ollama** (default): runs locally. Install [Ollama](https://ollama.com) and pull the model, e.g. `ollama pull qwen2.5:1.5b`.
+- **Gemini**: set `GEMINI_API_KEY` in `.env`, then for example:
+
+  ```sh
+  changeguard pr analyze OWNER/REPO#123 --llm --llm-provider gemini
+  ```
+
 The Gemini provider only receives bounded investigation prompts and read-only MCP results. It is limited to one MCP tool call, 12,000 prompt characters, 800 output tokens, and a three-request budget per analysis. If its API request, quota, or response fails, ChangeGuard retains the deterministic analysis rather than failing the run. The key is never persisted, logged, or committed.
+
+### Optional sandboxed verification
+
+`--verify` runs planned checks inside a Linux [bubblewrap](https://github.com/containers/bubblewrap) sandbox, and reports `BLOCKED` if `bwrap` is missing. On Debian/Ubuntu: `sudo apt install bubblewrap`.
 
 ## Example Output
 

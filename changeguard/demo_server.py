@@ -14,9 +14,12 @@ from changeguard.github import (
     PullRequestAnalysisService,
     PullRequestRef,
 )
+from changeguard.llm import default_llm_provider, load_local_env
 from changeguard.storage.sqlite import SQLiteAnalysisStore
 
-_ASSETS = Path(__file__).resolve().parent.parent / "demo"
+_ASSETS = Path(__file__).resolve().parent / "demo"
+# The demo guide lives in the repository docs; it is only available from a source checkout.
+_DEMO_GUIDE = Path(__file__).resolve().parent.parent / "docs" / "demo.md"
 _SAMPLE = _ASSETS / "demo-analysis.json"
 _MAX_REQUEST_BYTES = 16 * 1024
 _REPOSITORY_NAME = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -25,7 +28,7 @@ _ASSET_TYPES = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-    "/docs/demo.md": ("../docs/demo.md", "text/markdown; charset=utf-8"),
+    "/docs/demo.md": (_DEMO_GUIDE, "text/markdown; charset=utf-8"),
 }
 
 
@@ -42,7 +45,11 @@ class DemoHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         filename, content_type = asset
-        body = (_ASSETS / filename).resolve().read_bytes()
+        asset_path = _ASSETS / filename
+        if not asset_path.is_file():
+            self.send_error(404)
+            return
+        body = asset_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -72,6 +79,7 @@ class DemoHandler(BaseHTTPRequestHandler):
                 GitHubAPIAdapter(token=os.environ.get("GITHUB_TOKEN")),
                 SQLiteAnalysisStore(":memory:"),
                 token=os.environ.get("GITHUB_TOKEN"),
+                llm_provider=default_llm_provider(),
             ).analyze(
                 PullRequestRef(owner, name, number),
                 verify=verify,
@@ -113,11 +121,16 @@ class DemoHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    load_local_env()
     host = os.environ.get("CHANGEGUARD_DEMO_HOST", "127.0.0.1")
     port = int(os.environ.get("CHANGEGUARD_DEMO_PORT", "8000"))
     if host not in {"127.0.0.1", "localhost", "::1"}:
         raise SystemExit("The demo server only binds to localhost.")
-    print(f"ChangeGuard demo ready at http://{host}:{port}")
+    try:
+        provider = default_llm_provider()
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    print(f"ChangeGuard demo ready at http://{host}:{port} (LLM provider: {provider})", flush=True)
     ThreadingHTTPServer((host, port), DemoHandler).serve_forever()
 
 

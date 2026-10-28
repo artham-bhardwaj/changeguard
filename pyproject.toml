@@ -13,6 +13,9 @@ dependencies = [
     "tree-sitter-java>=0.23,<0.24",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [project.scripts]
 changeguard = "changeguard.cli:main"
 
@@ -20,5 +23,9 @@ changeguard = "changeguard.cli:main"
 testpaths = ["tests"]
 addopts = "-q"
 
-[tool.setuptools]
-packages = ["changeguard", "changeguard.agent", "changeguard.analysis", "changeguard.code_intelligence", "changeguard.github", "changeguard.llm", "changeguard.risk", "changeguard.storage", "changeguard.tools", "changeguard.verification", "evaluation"]
+[tool.setuptools.packages.find]
+include = ["changeguard*", "evaluation*"]
+
+[tool.setuptools.package-data]
+changeguard = ["demo/*"]
+evaluation = ["*.json"]

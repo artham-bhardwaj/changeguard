@@ -5,6 +5,7 @@ import re
 import subprocess
 import tempfile
 import base64
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -17,8 +18,8 @@ from changeguard.github.models import (
     RateLimit,
 )
 from changeguard.github.port import GitHostingPort
-from changeguard.llm.agent import BoundedInvestigationAgent
-from changeguard.llm.ollama import OllamaLLMAdapter
+from changeguard.llm.agent import DEFAULT_MAX_TOOL_CALLS, BoundedInvestigationAgent
+from changeguard.llm.providers import create_llm_adapter, max_tool_calls_for
 from changeguard.mcp.adapter import MCPToolPort
 from changeguard.storage.sqlite import SQLiteAnalysisStore
 
@@ -38,11 +39,14 @@ class PullRequestAnalysisService:
             [Path, str, str, str, str, str | None], None
         ]
         | None = None,
+        llm_provider: str = "ollama",
     ) -> None:
         self.provider = provider
         self.store = store
         self._token = token
-        self._analysis_factory = analysis_factory or _analysis_service
+        self._analysis_factory = analysis_factory or partial(
+            _analysis_service, llm_provider=llm_provider
+        )
         self._snapshot_materializer = snapshot_materializer or _initialize_snapshot
 
     def analyze(
@@ -270,18 +274,19 @@ def _sanitize_git_error(message: str, environment: dict[str, str]) -> str:
 
 
 def _analysis_service(
-    store: SQLiteAnalysisStore, llm: bool, database: str
+    store: SQLiteAnalysisStore, llm: bool, database: str, *, llm_provider: str = "ollama"
 ) -> ChangeAnalysisService:
     investigator = None
     if llm:
         server_environment = os.environ.copy()
         server_environment.pop("GITHUB_TOKEN", None)
         investigator = BoundedInvestigationAgent(
-            OllamaLLMAdapter(),
+            create_llm_adapter(llm_provider),
             MCPToolPort(
                 evidence_database=database,
                 server_environment=server_environment,
             ),
+            max_tool_calls=max_tool_calls_for(llm_provider, DEFAULT_MAX_TOOL_CALLS),
         )
     return ChangeAnalysisService(store, investigator=investigator)
 
