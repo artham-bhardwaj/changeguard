@@ -87,8 +87,10 @@ class ChangeAnalysisService:
         self.verification_executor = verification_executor or SafeVerificationExecutor()
 
     def analyze(
-        self, *, repo_path: str, base: str, head: str
+        self, *, repo_path: str, base: str, head: str, evidence_repository: str | None = None
     ) -> ChangeGuardAnalysis:
+        """Analyze ``base..head``. ``evidence_repository`` scopes historical evidence search
+        (for example ``owner/repo``); it defaults to ``repo_path``."""
         trace: list[ChangeStageTrace] = []
         uncertainties: list[str] = []
         analysis_id = str(uuid4())
@@ -347,7 +349,9 @@ class ChangeAnalysisService:
             from changeguard.evidence.query import build_change_query
 
             query = build_change_query(query_state, diff.diff_text)
-            history = self.tools.search_evidence(query, 5, repository=repo_path)
+            history = self.tools.search_evidence(
+                query, 5, repository=evidence_repository or repo_path
+            )
         except (MCPToolError, RuntimeError, sqlite3.Error, ValueError) as error:
             history = None
             historical_signals = HistoricalEvidenceSignals("unknown")

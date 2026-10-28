@@ -67,7 +67,7 @@ The local demo is a lightweight, browser-based presentation layer around the exi
   <img src="docs/images/demo-investigation-report.png" alt="ChangeGuard AI investigation report" width="920" />
 </p>
 
-## Running locally
+## Quick start
 
 Python 3.12 or later is required.
 
@@ -75,41 +75,101 @@ Python 3.12 or later is required.
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -e ".[dev]"   # or: python -m pip install -r requirements.txt
-cp .env.example .env                # optional: add GITHUB_TOKEN / GEMINI_API_KEY
-changeguard demo
 ```
 
-Then open <http://127.0.0.1:8000> in a browser.
-
-For a private repository, set `GITHUB_TOKEN` in `.env` or the environment before starting the demo server. The browser never receives GitHub credentials.
-
-ChangeGuard reads `.env` from the current directory or its parents (up to the git root), or from the path in `CHANGEGUARD_ENV_FILE`. Variables already set in the environment take precedence. See [`.env.example`](.env.example) for every setting.
-
-### Command-line usage
+To use the `changeguard` command from any directory, put settings in the user-wide file
+`~/.config/changeguard/.env` (see [`.env.example`](.env.example)):
 
 ```sh
-changeguard pr analyze OWNER/REPO#123              # analyze a GitHub pull request
-changeguard impact --repo . --base HEAD~1 --head HEAD   # analyze a local commit range
-changeguard evaluate --all                          # run the local evaluation fixtures
-python -m pytest                                    # run the test suite
+mkdir -p ~/.config/changeguard
+cp .env.example ~/.config/changeguard/.env   # then fill in GEMINI_API_KEY etc.
 ```
 
-### Optional LLM investigation
+ChangeGuard loads settings from, in order of priority: real environment variables,
+`CHANGEGUARD_ENV_FILE` or the nearest `.env` in the current directory or its parents
+(up to the git root), then `~/.config/changeguard/.env`.
 
-Deterministic analysis is the default and makes no LLM calls. Add `--llm` to `pr analyze` or `impact` (or tick the LLM option in the demo) to add a bounded AI investigation. Choose the provider with `--llm-provider ollama|gemini` or set `CHANGEGUARD_LLM_PROVIDER` in `.env`; the demo always uses `CHANGEGUARD_LLM_PROVIDER`.
+GitHub access uses `GITHUB_TOKEN`/`GH_TOKEN` if set, otherwise the token of a logged-in
+[GitHub CLI](https://cli.github.com) (`gh auth login`). Public repositories work without a token.
+Set `CHANGEGUARD_USE_GH_TOKEN=0` to disable the `gh` fallback.
 
-- **Ollama** (default): runs locally. Install [Ollama](https://ollama.com) and pull the model, e.g. `ollama pull qwen2.5:1.5b`.
-- **Gemini**: set `GEMINI_API_KEY` in `.env`, then for example:
+## Usage
 
-  ```sh
-  changeguard pr analyze OWNER/REPO#123 --llm --llm-provider gemini
-  ```
+### Review a pull request
 
-The Gemini provider only receives bounded investigation prompts and read-only MCP results. It is limited to one MCP tool call, 12,000 prompt characters, 800 output tokens, and a three-request budget per analysis. If its API request, quota, or response fails, ChangeGuard retains the deterministic analysis rather than failing the run. The key is never persisted, logged, or committed.
+```sh
+changeguard pr analyze OWNER/REPO#123
+changeguard pr analyze https://github.com/OWNER/REPO/pull/123 --llm   # add an AI investigation
+changeguard pr analyze OWNER/REPO#123 -o review.md                   # also save the report
+changeguard pr analyze OWNER/REPO#123 --json                         # full structured result
+```
 
-### Optional sandboxed verification
+The report covers the risk score and its factors, changed files and methods, changed API
+endpoints with the frontend code that calls them, related past incidents, the AI findings,
+recommended checks, and the analysis limitations.
 
-`--verify` runs planned checks inside a Linux [bubblewrap](https://github.com/containers/bubblewrap) sandbox, and reports `BLOCKED` if `bwrap` is missing. On Debian/Ubuntu: `sudo apt install bubblewrap`.
+### Analyze local commits
+
+```sh
+cd path/to/repo
+changeguard impact                              # HEAD~1..HEAD
+changeguard impact --base main --head my-branch
+changeguard impact --repo ../other --base v1.2 --head v1.3 --llm
+```
+
+### Add historical evidence
+
+Past incidents, postmortems, runbooks and architecture decisions make the risk score and
+AI investigation more useful. Evidence is matched to the repository it belongs to
+(`OWNER/REPO` for GitHub clones).
+
+```sh
+changeguard evidence add incidents/*.md --type incident --repo OWNER/REPO
+changeguard evidence add docs/adr/*.md --type architecture_decision   # repo inferred from cwd
+changeguard evidence list
+changeguard evidence search "payment retry timeout"
+```
+
+Types: `incident`, `postmortem`, `runbook`, `architecture_decision`, `issue`, `pull_request`, `release_note`.
+
+Analyses and evidence are stored in `~/.local/share/changeguard/changeguard.sqlite3`
+(override with `CHANGEGUARD_DATABASE` or `--database`).
+
+### Browser demo
+
+```sh
+changeguard demo     # http://127.0.0.1:8000
+```
+
+### AI investigation (optional)
+
+Deterministic analysis is the default and makes no LLM calls. Add `--llm` (or tick the LLM
+option in the demo) for a bounded AI investigation. Choose the provider with
+`--llm-provider ollama|gemini` or `CHANGEGUARD_LLM_PROVIDER`; the demo always uses the setting.
+
+- **Gemini:** set `GEMINI_API_KEY` and `CHANGEGUARD_LLM_PROVIDER=gemini`.
+- **Ollama:** runs locally. Install [Ollama](https://ollama.com) and pull the model, e.g. `ollama pull qwen2.5:1.5b`.
+
+The Gemini provider only receives bounded investigation prompts and read-only MCP results. It is
+limited to one MCP tool call, 12,000 prompt characters, 800 output tokens (thinking set to `low`
+so it does not consume the budget), and a three-request budget per analysis; temporary API errors
+(429/5xx) are retried twice without using that budget. If Gemini fails, ChangeGuard keeps the
+deterministic analysis and notes the failure in the report. The key is never persisted, logged,
+or committed.
+
+### Sandboxed verification (optional)
+
+`--verify` runs planned checks for changed **Python** code (matching pytest files and `py_compile`)
+inside a Linux [bubblewrap](https://github.com/containers/bubblewrap) sandbox, and reports
+`BLOCKED` if `bwrap` is missing (`sudo apt install bubblewrap` on Debian/Ubuntu). Java/Maven
+projects are not verified.
+
+### Development
+
+```sh
+python -m pytest
+changeguard evaluate --all
+```
 
 ## Example Output
 

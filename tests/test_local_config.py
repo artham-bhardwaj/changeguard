@@ -97,3 +97,17 @@ def test_pr_analysis_service_uses_selected_provider(tmp_path, monkeypatch):
     service = _analysis_service(store, True, str(tmp_path / "a.sqlite3"), llm_provider="gemini")
     assert isinstance(service.investigator.llm, GeminiLLMAdapter)
     assert service.investigator.max_tool_calls == 1
+
+
+def test_user_env_file_is_loaded_after_project_env(tmp_path, monkeypatch):
+    config = tmp_path / "config"
+    (config / "changeguard").mkdir(parents=True)
+    (config / "changeguard" / ".env").write_text("CG_PLAIN=user\nCG_DQ=user-only\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    project = tmp_path / "project"
+    (project / ".git").mkdir(parents=True)
+    (project / ".env").write_text("CG_PLAIN=project\n", encoding="utf-8")
+    monkeypatch.chdir(project)
+    load_local_env()
+    assert os.environ["CG_PLAIN"] == "project"
+    assert os.environ["CG_DQ"] == "user-only"

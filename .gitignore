@@ -7,3 +7,6 @@ __pycache__/
 !.env.example
 *.sqlite3
 *.db
+*.egg-info/
+build/
+dist/

@@ -227,6 +227,7 @@ def test_impact_cli_runs_deterministic_mode_without_ollama(git_repo, tmp_path, m
             head,
             "--database",
             database,
+            "--json",
         ],
     )
 

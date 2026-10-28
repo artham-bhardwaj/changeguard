@@ -15,6 +15,7 @@ from changeguard.github import (
     PullRequestRef,
 )
 from changeguard.llm import default_llm_provider, load_local_env
+from changeguard.settings import default_database_path, github_token
 from changeguard.storage.sqlite import SQLiteAnalysisStore
 
 _ASSETS = Path(__file__).resolve().parent / "demo"
@@ -75,10 +76,11 @@ class DemoHandler(BaseHTTPRequestHandler):
             if type(verify) is not bool or type(llm) is not bool:
                 raise ValueError("Analysis options must be true or false.")
             owner, name = repository.split("/", 1)
+            token = github_token()
             result = PullRequestAnalysisService(
-                GitHubAPIAdapter(token=os.environ.get("GITHUB_TOKEN")),
-                SQLiteAnalysisStore(":memory:"),
-                token=os.environ.get("GITHUB_TOKEN"),
+                GitHubAPIAdapter(token=token),
+                SQLiteAnalysisStore(default_database_path()),
+                token=token,
                 llm_provider=default_llm_provider(),
             ).analyze(
                 PullRequestRef(owner, name, number),

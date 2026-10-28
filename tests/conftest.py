@@ -10,6 +10,15 @@ def git(repo, *args: str) -> str:
     return result.stdout.strip()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_user_config(tmp_path_factory, monkeypatch):
+    """Keep tests independent of the developer's ~/.config and ~/.local settings."""
+    home = tmp_path_factory.mktemp("xdg")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / "config"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(home / "data"))
+    monkeypatch.delenv("CHANGEGUARD_DATABASE", raising=False)
+
+
 @pytest.fixture
 def git_repo(tmp_path):
     repo = tmp_path / "repository"

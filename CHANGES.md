@@ -545,3 +545,24 @@ Pinned Java + JavaScript/TypeScript sources
 - `tests/test_mcp.py` — API-impact MCP integration coverage.
 - `README.md`, `docs/architecture.md`, `docs/evaluation.md`, and `docs/api-impact.md` — describe supported analysis behavior, integration, tests, and limitations.
 - `CHANGES.md` — records this increment and observed verification results.
+
+## Personal-use readiness
+
+### Fixed
+- Packaging: all subpackages are discovered automatically; demo assets and the evaluation dataset ship with the package.
+- Gemini: responses split across several parts were truncated to the first part, which broke report generation. All non-thought text parts are now joined, JSON output is requested, thinking defaults to `low` so it does not use the output budget, cut-off responses raise a clear error, and temporary API errors (429/5xx/network) are retried without using the request budget.
+- `impact` resolves `--base`/`--head` to commit SHAs, so symbolic revisions such as `HEAD` no longer produce a false "checked-out HEAD differs" warning.
+- PR analysis searched historical evidence in a temporary database using a temporary checkout path, so stored evidence could never match. Evidence now comes from the configured database and is scoped to `owner/repo`.
+
+### Added
+- Readable Markdown report (risk factors, changed code, changed endpoints and their callers, related history, AI findings, recommended checks, limitations) as the default output of `pr analyze` and `impact`; `--json` keeps the structured output and `-o FILE` saves it.
+- `--llm-provider` for `pr analyze` and `CHANGEGUARD_LLM_PROVIDER` for the CLI and demo.
+- `changeguard evidence add|list|search` for managing historical evidence.
+- `changeguard demo`; PR URLs accepted by `pr analyze`; `impact` defaults to the current repository and `HEAD~1..HEAD`.
+- Settings from `~/.config/changeguard/.env`, the nearest project `.env`, or `CHANGEGUARD_ENV_FILE`; `.env` parsing handles quotes, `export`, and comments.
+- GitHub token fallback to the logged-in GitHub CLI.
+- Default database at `~/.local/share/changeguard/changeguard.sqlite3` (`CHANGEGUARD_DATABASE` to override).
+
+### Verification
+- Full test suite: 189 passed. 5 bubblewrap verification tests fail inside a nested sandbox (`bwrap: loopback: Failed RTM_NEWADDR`); this predates these changes.
+- Manual end-to-end runs against a real PR: deterministic report, Gemini investigation report, evidence ingestion affecting the risk score, `impact` on a local repository, and the demo `/api/analyze` endpoint.

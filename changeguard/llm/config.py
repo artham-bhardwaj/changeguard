@@ -42,22 +42,58 @@ class OllamaConfig:
         )
 
 
+GEMINI_THINKING_LEVELS = ("minimal", "low", "medium", "high")
+
+
 @dataclass(frozen=True)
 class GeminiConfig:
     model: str = "gemini-3.5-flash"
     timeout_seconds: float = 30.0
     max_requests: int = 3
     max_output_tokens: int = 800
+    # Thinking tokens count against max_output_tokens, so keep thinking low by default.
+    # None omits thinkingConfig (needed for models without thinking levels).
+    thinking_level: str | None = "low"
+    # Retries for temporary API errors (429/5xx/network); retries do not use the request budget.
+    max_retries: int = 2
+    retry_delay_seconds: float = 2.0
 
     def __post_init__(self) -> None:
-        if not self.model.strip(): raise ValueError("Gemini model name must not be empty")
-        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0: raise ValueError("Gemini timeout must be greater than zero")
-        if not 1 <= self.max_requests <= 3: raise ValueError("Gemini max requests must be between 1 and 3")
-        if not 1 <= self.max_output_tokens <= 1200: raise ValueError("Gemini max output tokens must be between 1 and 1200")
+        if not self.model.strip():
+            raise ValueError("Gemini model name must not be empty")
+        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise ValueError("Gemini timeout must be greater than zero")
+        if not 1 <= self.max_requests <= 3:
+            raise ValueError("Gemini max requests must be between 1 and 3")
+        if not 1 <= self.max_output_tokens <= 1200:
+            raise ValueError("Gemini max output tokens must be between 1 and 1200")
+        if self.thinking_level is not None and self.thinking_level not in GEMINI_THINKING_LEVELS:
+            raise ValueError(
+                f"Gemini thinking level must be one of: {', '.join(GEMINI_THINKING_LEVELS)}, or empty"
+            )
+        if not 0 <= self.max_retries <= 5:
+            raise ValueError("Gemini max retries must be between 0 and 5")
+        if not math.isfinite(self.retry_delay_seconds) or self.retry_delay_seconds < 0:
+            raise ValueError("Gemini retry delay must not be negative")
 
     @classmethod
     def from_env(cls) -> "GeminiConfig":
-        return cls(os.getenv("CHANGEGUARD_GEMINI_MODEL", "gemini-3.5-flash"), float(os.getenv("CHANGEGUARD_GEMINI_TIMEOUT_SECONDS", "30")), int(os.getenv("CHANGEGUARD_GEMINI_MAX_REQUESTS", "3")), int(os.getenv("CHANGEGUARD_GEMINI_MAX_OUTPUT_TOKENS", "800")))
+        def number(name: str, default: str, convert):
+            raw = os.getenv(name, default)
+            try:
+                return convert(raw)
+            except ValueError as error:
+                raise ValueError(f"{name} must be a number, got {raw!r}") from error
+
+        thinking = os.getenv("CHANGEGUARD_GEMINI_THINKING_LEVEL", "low").strip().lower()
+        return cls(
+            model=os.getenv("CHANGEGUARD_GEMINI_MODEL", "gemini-3.5-flash"),
+            timeout_seconds=number("CHANGEGUARD_GEMINI_TIMEOUT_SECONDS", "30", float),
+            max_requests=number("CHANGEGUARD_GEMINI_MAX_REQUESTS", "3", int),
+            max_output_tokens=number("CHANGEGUARD_GEMINI_MAX_OUTPUT_TOKENS", "800", int),
+            thinking_level=thinking or None,
+            max_retries=number("CHANGEGUARD_GEMINI_MAX_RETRIES", "2", int),
+        )
 
 
 LLM_PROVIDERS = ("ollama", "gemini")
@@ -93,19 +129,30 @@ def _parse_env_value(raw: str) -> str:
     return value[:comment].rstrip() if comment >= 0 else value
 
 
+def user_env_file() -> Path:
+    """User-wide settings file: $XDG_CONFIG_HOME/changeguard/.env (default ~/.config)."""
+    config_home = os.getenv("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(config_home) / "changeguard" / ".env"
+
+
 def load_local_env(path: str | os.PathLike[str] | None = None) -> None:
     """Load KEY=VALUE pairs into the environment without overriding existing variables.
 
-    Uses ``path`` if given, else ``CHANGEGUARD_ENV_FILE``, else the nearest ``.env``
-    in the current directory or its parents (up to the git root).
+    Uses ``path`` if given. Otherwise loads ``CHANGEGUARD_ENV_FILE`` or the nearest ``.env``
+    in the current directory or its parents (up to the git root), then the user-wide
+    ``~/.config/changeguard/.env``; earlier files win.
     """
-    if path is None:
-        configured = os.getenv("CHANGEGUARD_ENV_FILE")
-        env_file = Path(configured) if configured else find_env_file()
-        if env_file is None:
-            return
-    else:
-        env_file = Path(path)
+    if path is not None:
+        _load_env_file(Path(path))
+        return
+    configured = os.getenv("CHANGEGUARD_ENV_FILE")
+    project_file = Path(configured) if configured else find_env_file()
+    if project_file is not None:
+        _load_env_file(project_file)
+    _load_env_file(user_env_file())
+
+
+def _load_env_file(env_file: Path) -> None:
     try:
         lines = env_file.read_text(encoding="utf-8").splitlines()
     except FileNotFoundError:

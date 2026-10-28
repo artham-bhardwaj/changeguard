@@ -9,6 +9,7 @@ from functools import partial
 from pathlib import Path
 from typing import Callable
 
+from changeguard.agent.agent import LocalTools
 from changeguard.analysis.service import ChangeAnalysisService
 from changeguard.github.models import (
     GitHostingError,
@@ -96,9 +97,18 @@ class PullRequestAnalysisService:
                     self._token,
                 )
                 local_store = SQLiteAnalysisStore(str(Path(temp_dir) / "analysis.sqlite3"))
-                analysis_service = self._analysis_factory(local_store, llm, str(local_store.database_path))
+                # Evidence lives in the caller's database; an in-memory store cannot be shared.
+                evidence_database = (
+                    str(local_store.database_path)
+                    if str(self.store.database_path) == ":memory:"
+                    else str(self.store.database_path)
+                )
+                analysis_service = self._analysis_factory(local_store, llm, evidence_database)
                 analysis = analysis_service.analyze(
-                    repo_path=str(repo), base=pull.base_sha, head=pull.head_sha
+                    repo_path=str(repo),
+                    base=pull.base_sha,
+                    head=pull.head_sha,
+                    evidence_repository=reference.full_name.lower(),
                 )
                 if verify:
                     analysis = analysis_service.verify(analysis)
@@ -288,7 +298,8 @@ def _analysis_service(
             ),
             max_tool_calls=max_tool_calls_for(llm_provider, DEFAULT_MAX_TOOL_CALLS),
         )
-    return ChangeAnalysisService(store, investigator=investigator)
+    evidence_tools = LocalTools(SQLiteAnalysisStore(database))
+    return ChangeAnalysisService(store, evidence_tools, investigator=investigator)
 
 
 def _result_from_dict(value: dict[str, object], *, cached: bool) -> PRAnalysisResult:
