@@ -28,6 +28,7 @@ from changeguard.risk.models import (
     RuntimeSignals,
     TestSignals,
 )
+from changeguard.risk.triggers import ReviewTrigger
 from changeguard.verification.models import (
     verification_plan_from_dict,
     verification_result_from_dict,
@@ -51,6 +52,9 @@ def _risk_from_dict(risk_value: dict[str, Any]) -> RiskAssessment:
         uncertainties=tuple(risk_value["uncertainties"]),
         recommendations=tuple(risk_value["recommendations"]),
         metrics=risk_value["metrics"],
+        review_triggers=tuple(
+            ReviewTrigger(**item) for item in risk_value.get("review_triggers", ())
+        ),
     )
 
 

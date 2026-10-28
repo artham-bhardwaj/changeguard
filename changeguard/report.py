@@ -75,6 +75,16 @@ def _risk_section(risk: dict[str, Any], add) -> None:
             value = f"{contribution:.1f} of {factor.get('weight', 0):.0f}" if isinstance(contribution, (int, float)) else "not scored"
             add(f"| {factor.get('factor', '').replace('_', ' ')} | {factor.get('state', '')} | {value} |")
         add("")
+    triggers = risk.get("review_triggers") or []
+    if triggers:
+        before = metrics.get("level_before_review_triggers")
+        raised = f" They raised the level from {before}." if before else ""
+        add(f"**Review triggers** — a senior developer should look at this change.{raised}")
+        add("")
+        for trigger in triggers:
+            location = f" (`{trigger['location']}`)" if trigger.get("location") else ""
+            add(f"- **{trigger.get('severity', '')}** {trigger.get('reason', '')}{location}")
+        add("")
 
 
 def _changed_code_section(analysis: dict[str, Any], add) -> None:
@@ -88,11 +98,11 @@ def _changed_code_section(analysis: dict[str, Any], add) -> None:
     methods = [
         symbol.get("qualified_name", "")
         for symbol in analysis.get("changed_symbols") or []
-        if symbol.get("kind") in {"method", "constructor"}
+        if symbol.get("kind") in {"method", "constructor", "function", "route_handler"}
     ]
     if methods:
         add("")
-        add("Changed methods:")
+        add("Changed functions and methods:")
         for name in methods[:MAX_LISTED_ITEMS]:
             add(f"- `{name}`")
         if len(methods) > MAX_LISTED_ITEMS:

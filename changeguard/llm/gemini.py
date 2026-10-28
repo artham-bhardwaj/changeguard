@@ -5,6 +5,7 @@ import os
 import time
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from changeguard.llm.config import GeminiConfig
@@ -116,3 +117,31 @@ def _api_error_message(error: HTTPError) -> str:
         return str(detail["error"]["message"])[:300]
     except Exception:
         return str(error.reason)
+
+
+_MODEL_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}"
+
+
+def check_api_key(key: str, model: str, *, timeout: float = 8.0, opener=urlopen) -> tuple[bool, str]:
+    """Ask Gemini whether ``key`` can use ``model``.
+
+    Uses the model-info endpoint, which is free and sends no prompt. Returns (ok, detail).
+    """
+    request = Request(
+        _MODEL_URL.format(model=quote(model, safe="")),
+        headers={"x-goog-api-key": key},
+        method="GET",
+    )
+    try:
+        with opener(request, timeout=timeout) as response:
+            response.read()
+        return True, f"Gemini key works ({model})"
+    except HTTPError as error:
+        message = _api_error_message(error)
+        if error.code == 404:
+            return False, f"Gemini key works, but model {model!r} was not found: set CHANGEGUARD_GEMINI_MODEL"
+        if error.code == 429:
+            return True, f"Gemini key works ({model}), but the rate limit is reached right now"
+        return False, f"Gemini rejected the key (HTTP {error.code}): {message}"
+    except (URLError, TimeoutError, OSError) as error:
+        return False, f"could not reach Gemini to check the key: {getattr(error, 'reason', error)}"

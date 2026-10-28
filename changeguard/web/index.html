@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChangeGuard</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#/">
+        <img src="/favicon.svg" alt="" width="28" height="28">
+        <span>ChangeGuard</span>
+      </a>
+      <nav aria-label="Main">
+        <a href="#/" data-nav="home">Dashboard</a>
+        <a href="#/analyze" data-nav="analyze">New analysis</a>
+        <a href="#/reports" data-nav="reports">Reports</a>
+        <a href="#/projects" data-nav="projects">Projects</a>
+        <a href="#/evidence" data-nav="evidence">Evidence</a>
+        <a href="#/settings" data-nav="settings">Settings</a>
+        <a href="#/guide" data-nav="guide">Guide</a>
+      </nav>
+      <p class="sidebar-foot">Runs locally on this computer. Your code is only sent to an AI provider when you turn on AI investigation.</p>
+    </aside>
+    <div class="content">
+      <header class="topbar">
+        <button class="menu-button" id="menu-button" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">☰</button>
+        <span class="topbar-title" id="topbar-title">ChangeGuard</span>
+        <a class="button primary small" href="#/analyze">Analyze Pull Request</a>
+      </header>
+      <main id="main" tabindex="-1">
+        <noscript>ChangeGuard needs JavaScript enabled.</noscript>
+      </main>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>

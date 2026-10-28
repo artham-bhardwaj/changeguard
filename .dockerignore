@@ -1,0 +1,11 @@
+# Only the package sources go into the image. Never copy secrets or local data.
+*
+!pyproject.toml
+!README.md
+!changeguard/
+!evaluation/
+**/__pycache__
+**/*.pyc
+**/*.sqlite3
+**/.env
+**/.env.*

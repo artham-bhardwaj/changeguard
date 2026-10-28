@@ -3,26 +3,26 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
+from dataclasses import asdict
 from pathlib import Path
 from typing import get_args
 
+from changeguard import gate
 from changeguard.agent import DeterministicAgent
-from changeguard.analysis import ChangeAnalysisService
-from changeguard.github import GitHubAPIAdapter, PullRequestAnalysisService, PullRequestRef
+from changeguard.github import PullRequestRef
+from changeguard.github.comments import CommentError, post_report_comment
+from changeguard.history import HistoryStore
 from changeguard.llm import (
     LLM_PROVIDERS,
     OllamaError,
     OllamaLLMClient,
-    create_llm_adapter,
     default_llm_provider,
     load_local_env,
-    max_tool_calls_for,
 )
-from changeguard.llm.agent import BoundedInvestigationAgent, ToolUsingAgent
+from changeguard.llm.agent import ToolUsingAgent
 from changeguard.mcp import MCPToolPort
-from changeguard.report import render_markdown
+from changeguard.runner import analyze_local, analyze_pull_request
 from changeguard.settings import default_database_path, github_token, repository_key
 from changeguard.storage import SQLiteAnalysisStore
 
@@ -36,6 +36,9 @@ def main() -> None:
         "pr": _run_pr,
         "impact": _run_impact,
         "evidence": _run_evidence,
+        "init": _run_init,
+        "doctor": _run_doctor,
+        "ui": _run_demo,
         "evaluate": _run_evaluate,
         "analyze": _run_legacy_analyze,
     }
@@ -60,6 +63,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     database_help = f"SQLite database for analyses and evidence (default: {default_database_path()})"
     sub = parser.add_subparsers(dest="command")
+    fail_on_help = (
+        "exit with code 4 when risk is at or above LEVEL (or the analysis is incomplete), "
+        "so CI or a pre-push hook can stop the change for senior review"
+    )
 
     pr = sub.add_parser("pr", help="analyze a GitHub pull request")
     pr_sub = pr.add_subparsers(dest="pr_command")
@@ -72,9 +79,16 @@ def _build_parser() -> argparse.ArgumentParser:
     pr_analyze.add_argument("--persist", action="store_true", help="cache completed exact-revision results")
     pr_analyze.add_argument("--json", action="store_true", help="output the full structured result as JSON")
     pr_analyze.add_argument("--output", "-o", help="also write the report (or JSON with --json) to this file")
+    pr_analyze.add_argument("--comment", action="store_true", help="post/update the report as a PR comment")
     pr_analyze.add_argument(
         "--refresh-head", action=argparse.BooleanOptionalAction, default=True,
         help="check the PR head again after analysis (default: enabled)",
+    )
+    pr_analyze.add_argument("--fail-on", type=str.upper, choices=GATE_LEVELS, metavar="LEVEL", help=fail_on_help)
+    pr_analyze.add_argument(
+        "--approvers",
+        help="comma-separated GitHub logins whose approval of the latest commit clears the gate "
+        "(default: CHANGEGUARD_APPROVERS, else any owner, member or collaborator)",
     )
 
     impact = sub.add_parser("impact", help="analyze a commit range in a local git repository")
@@ -88,6 +102,7 @@ def _build_parser() -> argparse.ArgumentParser:
     impact.add_argument("--verify", action="store_true", help="run planned checks in a bubblewrap sandbox")
     impact.add_argument("--json", action="store_true", help="output the full structured result as JSON")
     impact.add_argument("--output", "-o", help="also write the report (or JSON with --json) to this file")
+    impact.add_argument("--fail-on", type=str.upper, choices=GATE_LEVELS, metavar="LEVEL", help=fail_on_help)
 
     evidence = sub.add_parser("evidence", help="manage historical evidence used during analysis")
     evidence_sub = evidence.add_subparsers(dest="evidence_command")
@@ -101,6 +116,12 @@ def _build_parser() -> argparse.ArgumentParser:
     evidence_list = evidence_sub.add_parser("list", help="list stored evidence")
     evidence_list.add_argument("--repo", help="only evidence for OWNER/REPO")
     evidence_list.add_argument("--database", default=default_database_path(), help=database_help)
+    evidence_sync = evidence_sub.add_parser(
+        "sync", help="import .changeguard/evidence/ and docs/{incidents,adr,runbooks,...} folders"
+    )
+    evidence_sync.add_argument("path", nargs="?", default=".", help="repository path (default: current directory)")
+    evidence_sync.add_argument("--repo", help="OWNER/REPO to file the evidence under (default: from git remote)")
+    evidence_sync.add_argument("--database", default=default_database_path(), help=database_help)
     evidence_search = evidence_sub.add_parser("search", help="search stored evidence")
     evidence_search.add_argument("query")
     evidence_search.add_argument("--repo", help="only evidence for OWNER/REPO")
@@ -108,7 +129,20 @@ def _build_parser() -> argparse.ArgumentParser:
     evidence_search.add_argument("--top-k", type=int, default=5)
     evidence_search.add_argument("--database", default=default_database_path(), help=database_help)
 
-    sub.add_parser("demo", help="start the local browser demo (http://127.0.0.1:8000)")
+    init = sub.add_parser("init", help="set up ChangeGuard for a project (run inside the repository)")
+    init.add_argument("path", nargs="?", default=".", help="repository path (default: current directory)")
+    init.add_argument("--github-action", action="store_true", help="add a workflow that reports on every PR")
+    init.add_argument("--action-ref", default="main", help="ChangeGuard git ref the workflow installs (default: main)")
+    init.add_argument(
+        "--fail-on", type=str.lower, choices=[level.lower() for level in GATE_LEVELS], default="high",
+        help="risk level at which the workflow's check fails until a senior approves (default: high)",
+    )
+    init.add_argument("--no-evidence-folders", action="store_true", help="do not create .changeguard/evidence/")
+    init.add_argument("--database", default=default_database_path(), help=database_help)
+
+    sub.add_parser("doctor", help="check your ChangeGuard setup")
+    sub.add_parser("ui", help="open the ChangeGuard web app (http://127.0.0.1:8000)")
+    sub.add_parser("demo", help="alias for 'ui'")
 
     evaluate = sub.add_parser("evaluate", help="run authored local evaluation fixtures")
     evaluate_group = evaluate.add_mutually_exclusive_group()
@@ -133,6 +167,8 @@ def _source_type():
     return SourceType
 
 
+GATE_LEVELS = gate.LEVELS
+
 _PR_URL = re.compile(r"^https?://github\.com/([^/]+)/([^/]+)/pull/(\d+)(?:[/?#].*)?$")
 
 
@@ -144,7 +180,7 @@ def _parse_pull_request(value: str) -> PullRequestRef:
 
 
 def _run_demo(_args, _parser) -> None:
-    from changeguard.demo_server import main as demo_main
+    from changeguard.webapp import main as demo_main
     demo_main()
 
 
@@ -155,59 +191,72 @@ def _run_pr(args, parser) -> None:
         reference = _parse_pull_request(args.pull_request)
     except ValueError as error:
         parser.error(str(error))
-    token = github_token()
-    store = SQLiteAnalysisStore(args.database)
-    result = PullRequestAnalysisService(
-        GitHubAPIAdapter(token=token), store, token=token, llm_provider=args.llm_provider
-    ).analyze(
-        reference, verify=args.verify, llm=args.llm, persist=args.persist,
-        refresh_head=args.refresh_head,
+    run = analyze_pull_request(
+        reference, database=args.database, llm=args.llm, verify=args.verify,
+        llm_provider=args.llm_provider, persist=args.persist, refresh_head=args.refresh_head,
     )
-    payload = result.to_dict()
+    payload = run.payload
+    gate_result = None
+    markdown = run.markdown
+    if args.fail_on:
+        gate_result = gate.evaluate_pull_request(
+            reference, payload, args.fail_on, gate.parse_approvers(args.approvers), github_token()
+        )
+        payload = {**payload, "gate": asdict(gate_result)}
+        if markdown:
+            markdown = markdown.rstrip() + "\n\n" + gate_result.markdown()
     if args.json:
         _emit(json.dumps(payload, indent=2), args.output)
-    elif result.analysis:
-        _emit(render_markdown(result.analysis, pr=payload), args.output)
+    elif markdown:
+        _emit(markdown, args.output)
     else:
-        lines = [f"{result.status}: {result.repository}#{result.pull_number}"]
-        if result.error:
-            lines.append(f"{result.error.code}: {result.error.message}")
-            if result.error.code in {"NOT_FOUND", "ACCESS_DENIED", "AUTHENTICATION_FAILED", "RATE_LIMITED"} and not token:
+        lines = [f"{payload['status']}: {payload['repository']}#{payload['pull_number']}"]
+        error = payload.get("error")
+        if error:
+            lines.append(f"{error['code']}: {error['message']}")
+            if error["code"] in {"NOT_FOUND", "ACCESS_DENIED", "AUTHENTICATION_FAILED", "RATE_LIMITED"} and not run.token_available:
                 lines.append("Hint: for private repositories set GITHUB_TOKEN or run `gh auth login`.")
         _emit("\n".join(lines), args.output)
-    if result.status == "FAILED":
+    comment_failed = False
+    if args.comment and markdown:
+        try:
+            url = post_report_comment(reference, markdown, github_token())
+            print(f"Posted report comment: {url}", file=sys.stderr)
+        except CommentError as error:
+            print(f"Could not post the PR comment: {error}", file=sys.stderr)
+            comment_failed = True
+    if gate_result is not None:
+        print(gate_result.summary(), file=sys.stderr)
+    if payload["status"] == "FAILED":
         raise SystemExit(2)
+    if gate_result is not None and gate_result.blocked:
+        raise SystemExit(gate.GATE_EXIT_CODE)
+    if comment_failed:
+        raise SystemExit(3)
 
 
 def _run_impact(args, parser) -> None:
-    repo = str(Path(args.repo).resolve())
-    base = _resolve_commit(parser, repo, args.base)
-    head = _resolve_commit(parser, repo, args.head)
-    store = SQLiteAnalysisStore(args.database)
-    mcp = MCPToolPort(evidence_database=args.database)
-    investigator = None
-    if args.llm:
-        try:
-            adapter = create_llm_adapter(args.llm_provider)
-        except (OllamaError, ValueError) as error:
-            parser.error(str(error))
-        investigator = BoundedInvestigationAgent(
-            adapter, mcp, max_tool_calls=max_tool_calls_for(args.llm_provider, args.max_tool_calls)
+    try:
+        run = analyze_local(
+            args.repo, args.base, args.head, database=args.database, llm=args.llm, verify=args.verify,
+            llm_provider=args.llm_provider, max_tool_calls=args.max_tool_calls,
         )
-    service = ChangeAnalysisService(store, mcp, investigator=investigator)
-    result = service.analyze(
-        repo_path=repo, base=base, head=head, evidence_repository=repository_key(repo)
-    )
-    if args.verify:
-        result = service.verify(result)
-    analysis = result.to_dict()
+    except (OllamaError, ValueError) as error:
+        parser.error(str(error))
     if args.json:
         output = json.dumps(
-            {"mode": "llm_enhanced" if args.llm else "deterministic", "analysis": analysis}, indent=2
+            {"mode": "llm_enhanced" if args.llm else "deterministic", "analysis": run.payload["analysis"]}, indent=2
         )
     else:
-        output = render_markdown(analysis)
+        output = run.markdown or ""
+    gate_result = gate.evaluate(run.payload.get("analysis"), args.fail_on) if args.fail_on else None
+    if gate_result is not None and not args.json:
+        output = output.rstrip() + "\n\n" + gate_result.markdown()
     _emit(output, args.output)
+    if gate_result is not None:
+        print(gate_result.summary(), file=sys.stderr)
+        if gate_result.blocked:
+            raise SystemExit(gate.GATE_EXIT_CODE)
 
 
 def _run_evidence(args, parser) -> None:
@@ -246,6 +295,19 @@ def _run_evidence(args, parser) -> None:
         for row in seen.values():
             print(f"[{row['source_type']}] {row['title']}  ({row['source']})")
         return
+    if args.evidence_command == "sync":
+        from changeguard.project import git_root, sync_evidence
+
+        try:
+            root = git_root(args.path)
+        except ValueError as error:
+            parser.error(str(error))
+        repository = (args.repo or repository_key(str(root))).lower()
+        added, existing, skipped = sync_evidence(store, root, repository)
+        print(f"Evidence for {repository}: {added} added, {existing} already stored.")
+        for item in skipped:
+            print(f"  skipped {item}")
+        return
     if args.evidence_command == "search":
         repository = args.repo.lower() if args.repo else None
         bundle = EvidenceService(TfidfLexicalRetriever(store)).search(
@@ -257,7 +319,58 @@ def _run_evidence(args, parser) -> None:
             snippet = " ".join(item.matched_text.split())[:160]
             print(f"{item.similarity_score:.2f}  [{item.source_type}] {item.title}\n      {snippet}")
         return
-    parser.error("use: changeguard evidence {add,list,search}")
+    parser.error("use: changeguard evidence {add,sync,list,search}")
+
+
+def _run_init(args, parser) -> None:
+    from changeguard.project import create_evidence_folders, detect_project, sync_evidence, write_github_action
+
+    try:
+        profile = detect_project(args.path)
+    except ValueError as error:
+        parser.error(str(error))
+    root = Path(profile.path)
+    repository = repository_key(str(root))
+    print(f"ChangeGuard setup for {profile.name}  ({repository})\n")
+    languages = ", ".join(f"{name} ({count})" for name, count in profile.languages.items()) or "none detected"
+    print(f"Languages:  {languages}")
+    print(f"Frameworks: {', '.join(profile.frameworks) or 'none detected'}")
+    for note in profile.notes:
+        print(f"  note: {note}")
+    print()
+    if not args.no_evidence_folders:
+        for created in create_evidence_folders(root):
+            print(f"created  {created}")
+    store = SQLiteAnalysisStore(args.database)
+    added, existing, skipped = sync_evidence(store, root, repository)
+    print(f"evidence {added} document(s) imported, {existing} already stored")
+    for item in skipped:
+        print(f"  skipped {item}")
+    if args.github_action:
+        workflow, written = write_github_action(root, ref=args.action_ref, fail_on=args.fail_on)
+        relative = workflow.relative_to(root)
+        print(f"{'created ' if written else 'exists  '} {relative}")
+        if written:
+            print("         commit it, then make 'ChangeGuard review gate' a required status check on your main branch")
+            print("         (Settings -> Branches); optionally add a GEMINI_API_KEY secret for AI reports")
+    HistoryStore(args.database).save_project(str(root), repository, profile.name, profile.languages, profile.frameworks)
+    print(f"registered project in {args.database}\n")
+    print("Next steps:")
+    print("  changeguard impact                 # analyze your latest commit")
+    print("  changeguard pr analyze OWNER/REPO#N")
+    print("  changeguard ui                     # open the web app")
+
+
+def _run_doctor(_args, _parser) -> None:
+    from changeguard.project import doctor
+
+    problems = 0
+    for check in doctor():
+        mark = "ok " if check.ok else ("-- " if check.optional else "!! ")
+        problems += 0 if check.ok or check.optional else 1
+        print(f"{mark} {check.name:<26} {check.detail}")
+    if problems:
+        raise SystemExit(1)
 
 
 def _run_evaluate(args, parser) -> None:
@@ -290,20 +403,6 @@ def _run_legacy_analyze(args, _parser) -> None:
         "mode": result.mode, "report": result.report,
         "grounding": result.grounding, "total_steps": result.total_steps,
     }, indent=2))
-
-
-def _resolve_commit(parser: argparse.ArgumentParser, repo: str, revision: str) -> str:
-    """Resolve a revision such as HEAD~1 or a branch name to a full commit SHA."""
-    try:
-        completed = subprocess.run(
-            ["git", "-C", repo, "rev-parse", "--verify", "--quiet", "--end-of-options", f"{revision}^{{commit}}"],
-            capture_output=True, text=True, timeout=30, check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as error:
-        parser.error(f"cannot run git: {error}")
-    if completed.returncode != 0:
-        parser.error(f"{revision!r} is not a commit in {repo}")
-    return completed.stdout.strip()
 
 
 def _markdown_title(content: str) -> str | None:

@@ -1,0 +1,32 @@
+# Start:  docker compose up -d     then open http://127.0.0.1:8000
+# Stop:   docker compose down      (reports and settings are kept in the changeguard-data volume)
+#
+# Optional settings go in a .env file next to this file (all optional):
+#   PROJECTS_DIR=/home/you/code      folder with your git repositories (default: ~/projects)
+#   CHANGEGUARD_PORT=8010            port on this computer (default: 8000)
+#   GEMINI_API_KEY=...               or set it on the Settings page
+#   GITHUB_TOKEN=...                 for private repositories
+services:
+  changeguard:
+    image: ghcr.io/artham-bhardwaj/changeguard:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      # Only reachable from this computer. The app has no login: do not publish it on 0.0.0.0.
+      - "127.0.0.1:${CHANGEGUARD_PORT:-8000}:8000"
+    user: "${CHANGEGUARD_UID:-1000}:${CHANGEGUARD_GID:-1000}"
+    volumes:
+      - changeguard-data:/data
+      # Mounted at the same path as on this computer, so paths you type in the app just work.
+      - "${PROJECTS_DIR:-${HOME}/projects}:${PROJECTS_DIR:-${HOME}/projects}"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Reach an Ollama server running on this computer.
+      CHANGEGUARD_OLLAMA_BASE_URL: "${CHANGEGUARD_OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  changeguard-data:

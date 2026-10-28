@@ -18,6 +18,18 @@ class ChangedLineRange:
     new_count: int
 
 
+def line_range_intersects(start: int, end: int, changed: ChangedLineRange) -> bool:
+    """True when lines ``start..end`` (new file) overlap a changed hunk.
+
+    A pure deletion (no new lines) counts for the code that contains the deletion point,
+    so removing a check from a function still marks that function as changed.
+    """
+    if changed.new_count <= 0:
+        return start <= changed.new_start <= end
+    changed_end = changed.new_start + changed.new_count - 1
+    return start <= changed_end and changed.new_start <= end
+
+
 @dataclass(frozen=True)
 class JavaSymbol:
     symbol_id: str
@@ -514,11 +526,7 @@ class JavaSymbolMapper:
     def _intersects(
         self, symbol_start: int, symbol_end: int, changed: ChangedLineRange
     ) -> bool:
-        if changed.new_count <= 0:
-            return False
-        changed_start = changed.new_start
-        changed_end = changed.new_start + changed.new_count - 1
-        return symbol_start <= changed_end and changed_start <= symbol_end
+        return line_range_intersects(symbol_start, symbol_end, changed)
 
     def _text(self, node: Node | None, source: bytes) -> str:
         return "" if node is None else source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")

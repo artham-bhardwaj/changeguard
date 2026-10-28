@@ -74,7 +74,7 @@ def java_repo(tmp_path, *, unknown_call: bool = False):
     return repo, base, head
 
 
-def test_java_field_changes_map_when_line_data_exists_and_fall_back_when_deleted():
+def test_java_field_changes_map_when_line_data_exists_and_deletions_map_to_containing_code():
     path = "src/main/java/demo/Sample.java"
     source = "package demo;\nclass Sample {\n    int count = 1;\n    void run() {}\n}\n"
     mapper = JavaSymbolMapper()
@@ -96,8 +96,14 @@ def test_java_field_changes_map_when_line_data_exists_and_fall_back_when_deleted
         if symbol.symbol_id in mapped.changed_symbol_ids
     }
     assert "demo.Sample.count" in mapped_names
-    assert path in deleted.file_level_changes
-    assert deleted.changed_symbol_ids == ()
+    deleted_names = {
+        symbol.qualified_name
+        for symbol in deleted.symbols
+        if symbol.symbol_id in deleted.changed_symbol_ids
+    }
+    # A pure deletion marks the code around the deletion point as changed.
+    assert "demo.Sample" in deleted_names
+    assert path not in deleted.file_level_changes
 
 
 def test_end_to_end_java_change_builds_call_graph_and_blast_radius(tmp_path):

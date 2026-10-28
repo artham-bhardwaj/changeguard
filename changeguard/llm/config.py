@@ -165,5 +165,16 @@ def _load_env_file(env_file: Path) -> None:
             line = line[len("export "):].lstrip()
         name, separator, value = line.partition("=")
         name = name.strip()
-        if separator and name:
-            os.environ.setdefault(name, _parse_env_value(value))
+        if separator and name and name not in os.environ:
+            os.environ[name] = _parse_env_value(value)
+            _ENV_SOURCES[name] = str(env_file)
+
+
+_ENV_SOURCES: dict[str, str] = {}
+
+
+def env_source(name: str) -> str | None:
+    """Where a setting came from: the .env file that set it, "environment", or None if unset."""
+    if name in _ENV_SOURCES and os.environ.get(name) is not None:
+        return _ENV_SOURCES[name]
+    return "environment" if name in os.environ else None

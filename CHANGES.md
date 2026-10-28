@@ -1,5 +1,41 @@
 # ChangeGuard Change Log
 
+## Review gate
+
+### Added
+- `--fail-on LEVEL` for `changeguard impact` and `changeguard pr analyze`: exit code 4 when risk is at or above LEVEL, or when the analysis is incomplete. The report ends with a "Review gate" section.
+- For pull requests, an approving review of the latest commit by a trusted reviewer (or one listed in `--approvers` / `CHANGEGUARD_APPROVERS`) clears the gate. The PR author, bots and approvals of older commits don't count.
+- Review triggers (`changeguard/risk/triggers.py`): removed checks and access checks, shell/eval, data deletion, hard-coded secrets, CI/CODEOWNERS edits, sensitive function names and wide reach raise the risk level to at least HIGH; dependency changes to at least MEDIUM. Shown in the Markdown report and the web app.
+- `changeguard init --fail-on` sets the workflow threshold (default `high`).
+- Failing verification checks are a review trigger, so `--verify --fail-on high` blocks a change whose tests fail.
+- `--verify` finds tests by what they import and by the endpoint URLs they request, not only by file name (`test_billing.py`).
+- `--verify` runs Python checks with the project's own `.venv` (or the main checkout's, for git worktrees), with the analyzed revision first on `PYTHONPATH`.
+- `changeguard doctor` checks that the Gemini key actually works (a free model-info call) and shows which `.env` file it came from.
+
+### Changed
+- The generated GitHub workflow now fails its "ChangeGuard review gate" check instead of always passing (`|| true` removed), and re-runs when a review is submitted or dismissed.
+
+### Fixed
+- `--verify` ran Python checks on the checked-out commit instead of the analyzed one.
+- Pytest totals were missing when a project's own `addopts` included `-q`, and when long output was cut off; the end of long output is now kept.
+- The sandbox's `/tmp` limit was raised from 256 MB to 1 GB, so apps that check free disk space in their tests pass.
+- Changes that only delete lines (such as removing a confirmation check) now mark the containing function and endpoint as changed, for Python, JS/TS and Java. Previously they were reported as "No changed API endpoints".
+
+## Every project + web app
+
+### Added
+- Python and TypeScript/JavaScript code intelligence (tree-sitter): functions, classes, methods, React components, types, imports and call graphs.
+- Endpoint detection for FastAPI, Flask, Express, Fastify, Hono and Next.js, matched to `fetch`/`axios` callers. Changed endpoints propagate impact to the frontend code that calls them.
+- Sandboxed JS/TS verification: `npm run typecheck` / `tsc --noEmit` and `npm test` for the changed package, reusing local `node_modules` read-only.
+- `changeguard init`: detects languages and frameworks, creates `.changeguard/evidence/`, imports evidence, registers the project, and can write a GitHub Action (`--github-action`).
+- `changeguard doctor`, `changeguard evidence sync`, and `changeguard pr analyze --comment` (one PR comment, updated on every push).
+- `changeguard ui`: a local web app with dashboard, new analysis (PR or local commits), saved reports, projects, evidence, settings and a built-in guide. It replaces the demo page; `changeguard demo` still works.
+- Saved report history and registered projects in the ChangeGuard database.
+
+### Changed
+- When some changed files cannot be analyzed (docs, SQL, config), blast-radius counts are still scored as a lower bound and marked uncertain, instead of being dropped from the risk score.
+- Web app POST requests require an `X-ChangeGuard` header and a localhost Host/Origin, blocking cross-site requests and DNS rebinding.
+
 ## Milestone 4A — Local LLM Provider Foundation
 
 ### Added
