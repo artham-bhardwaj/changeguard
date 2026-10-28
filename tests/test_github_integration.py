@@ -350,12 +350,12 @@ def test_llm_mcp_child_does_not_inherit_github_credentials(tmp_path, monkeypatch
             captured.update(kwargs["server_environment"])
 
     class FakeInvestigator:
-        def __init__(self, *_args):
+        def __init__(self, *_args, **_kwargs):
             pass
 
     monkeypatch.setattr(github_service, "MCPToolPort", FakeMCPPort)
     monkeypatch.setattr(github_service, "BoundedInvestigationAgent", FakeInvestigator)
-    monkeypatch.setattr(github_service, "OllamaLLMAdapter", lambda: object())
+    monkeypatch.setattr(github_service, "create_llm_adapter", lambda _provider: object())
     github_service._analysis_service(
         SQLiteAnalysisStore(str(tmp_path / "state.sqlite")),
         True,

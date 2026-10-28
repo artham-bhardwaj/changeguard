@@ -184,7 +184,7 @@ def test_java_only_change_is_reported_as_unsupported_project(git_repo, tmp_path)
     assert plan.status == "UNSUPPORTED_PROJECT"
     blocked = SafeVerificationExecutor().execute(plan)
     assert blocked.status == "BLOCKED"
-    assert any("Python projects only" in item for item in blocked.limitations)
+    assert any("Python and JavaScript/TypeScript projects only" in item for item in blocked.limitations)
 
 
 @pytest.mark.parametrize(

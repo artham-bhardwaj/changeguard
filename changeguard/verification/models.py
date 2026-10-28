@@ -6,7 +6,7 @@ from typing import Literal
 VerificationStatus = Literal[
     "NOT_RUN", "RUNNING", "PASSED", "FAILED", "TIMED_OUT", "BLOCKED", "ERROR"
 ]
-VerificationOperation = Literal["PYTHON_COMPILE", "PYTHON_PYTEST"]
+VerificationOperation = Literal["PYTHON_COMPILE", "PYTHON_PYTEST", "NODE_TYPECHECK", "NODE_TEST"]
 PlanStatus = Literal["READY", "UNSUPPORTED_PROJECT", "NO_CHECKS"]
 
 

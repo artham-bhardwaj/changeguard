@@ -10,12 +10,12 @@ From the repository root, using Python 3.12 or later:
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install -r requirements.txt
-python -m changeguard.demo_server
+changeguard ui   # or: python -m changeguard.webapp
 ```
 
 Open <http://127.0.0.1:8000>. Stop the server with Ctrl+C.
 
-The presentation server uses Python's standard library; it adds no dependency and stores no analyses in a database. By default it listens only on `127.0.0.1:8000`. `CHANGEGUARD_DEMO_PORT` may select a different local port. The server rejects non-loopback host configuration.
+The server uses Python's standard library. Reports, projects and evidence are saved in the ChangeGuard database. By default it listens only on `127.0.0.1:8000`. `CHANGEGUARD_DEMO_PORT` may select a different local port. The server rejects non-loopback host configuration.
 
 ### Live pull-request analysis
 

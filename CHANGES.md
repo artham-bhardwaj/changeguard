@@ -1,5 +1,41 @@
 # ChangeGuard Change Log
 
+## Review gate
+
+### Added
+- `--fail-on LEVEL` for `changeguard impact` and `changeguard pr analyze`: exit code 4 when risk is at or above LEVEL, or when the analysis is incomplete. The report ends with a "Review gate" section.
+- For pull requests, an approving review of the latest commit by a trusted reviewer (or one listed in `--approvers` / `CHANGEGUARD_APPROVERS`) clears the gate. The PR author, bots and approvals of older commits don't count.
+- Review triggers (`changeguard/risk/triggers.py`): removed checks and access checks, shell/eval, data deletion, hard-coded secrets, CI/CODEOWNERS edits, sensitive function names and wide reach raise the risk level to at least HIGH; dependency changes to at least MEDIUM. Shown in the Markdown report and the web app.
+- `changeguard init --fail-on` sets the workflow threshold (default `high`).
+- Failing verification checks are a review trigger, so `--verify --fail-on high` blocks a change whose tests fail.
+- `--verify` finds tests by what they import and by the endpoint URLs they request, not only by file name (`test_billing.py`).
+- `--verify` runs Python checks with the project's own `.venv` (or the main checkout's, for git worktrees), with the analyzed revision first on `PYTHONPATH`.
+- `changeguard doctor` checks that the Gemini key actually works (a free model-info call) and shows which `.env` file it came from.
+
+### Changed
+- The generated GitHub workflow now fails its "ChangeGuard review gate" check instead of always passing (`|| true` removed), and re-runs when a review is submitted or dismissed.
+
+### Fixed
+- `--verify` ran Python checks on the checked-out commit instead of the analyzed one.
+- Pytest totals were missing when a project's own `addopts` included `-q`, and when long output was cut off; the end of long output is now kept.
+- The sandbox's `/tmp` limit was raised from 256 MB to 1 GB, so apps that check free disk space in their tests pass.
+- Changes that only delete lines (such as removing a confirmation check) now mark the containing function and endpoint as changed, for Python, JS/TS and Java. Previously they were reported as "No changed API endpoints".
+
+## Every project + web app
+
+### Added
+- Python and TypeScript/JavaScript code intelligence (tree-sitter): functions, classes, methods, React components, types, imports and call graphs.
+- Endpoint detection for FastAPI, Flask, Express, Fastify, Hono and Next.js, matched to `fetch`/`axios` callers. Changed endpoints propagate impact to the frontend code that calls them.
+- Sandboxed JS/TS verification: `npm run typecheck` / `tsc --noEmit` and `npm test` for the changed package, reusing local `node_modules` read-only.
+- `changeguard init`: detects languages and frameworks, creates `.changeguard/evidence/`, imports evidence, registers the project, and can write a GitHub Action (`--github-action`).
+- `changeguard doctor`, `changeguard evidence sync`, and `changeguard pr analyze --comment` (one PR comment, updated on every push).
+- `changeguard ui`: a local web app with dashboard, new analysis (PR or local commits), saved reports, projects, evidence, settings and a built-in guide. It replaces the demo page; `changeguard demo` still works.
+- Saved report history and registered projects in the ChangeGuard database.
+
+### Changed
+- When some changed files cannot be analyzed (docs, SQL, config), blast-radius counts are still scored as a lower bound and marked uncertain, instead of being dropped from the risk score.
+- Web app POST requests require an `X-ChangeGuard` header and a localhost Host/Origin, blocking cross-site requests and DNS rebinding.
+
 ## Milestone 4A — Local LLM Provider Foundation
 
 ### Added
@@ -545,3 +581,24 @@ Pinned Java + JavaScript/TypeScript sources
 - `tests/test_mcp.py` — API-impact MCP integration coverage.
 - `README.md`, `docs/architecture.md`, `docs/evaluation.md`, and `docs/api-impact.md` — describe supported analysis behavior, integration, tests, and limitations.
 - `CHANGES.md` — records this increment and observed verification results.
+
+## Personal-use readiness
+
+### Fixed
+- Packaging: all subpackages are discovered automatically; demo assets and the evaluation dataset ship with the package.
+- Gemini: responses split across several parts were truncated to the first part, which broke report generation. All non-thought text parts are now joined, JSON output is requested, thinking defaults to `low` so it does not use the output budget, cut-off responses raise a clear error, and temporary API errors (429/5xx/network) are retried without using the request budget.
+- `impact` resolves `--base`/`--head` to commit SHAs, so symbolic revisions such as `HEAD` no longer produce a false "checked-out HEAD differs" warning.
+- PR analysis searched historical evidence in a temporary database using a temporary checkout path, so stored evidence could never match. Evidence now comes from the configured database and is scoped to `owner/repo`.
+
+### Added
+- Readable Markdown report (risk factors, changed code, changed endpoints and their callers, related history, AI findings, recommended checks, limitations) as the default output of `pr analyze` and `impact`; `--json` keeps the structured output and `-o FILE` saves it.
+- `--llm-provider` for `pr analyze` and `CHANGEGUARD_LLM_PROVIDER` for the CLI and demo.
+- `changeguard evidence add|list|search` for managing historical evidence.
+- `changeguard demo`; PR URLs accepted by `pr analyze`; `impact` defaults to the current repository and `HEAD~1..HEAD`.
+- Settings from `~/.config/changeguard/.env`, the nearest project `.env`, or `CHANGEGUARD_ENV_FILE`; `.env` parsing handles quotes, `export`, and comments.
+- GitHub token fallback to the logged-in GitHub CLI.
+- Default database at `~/.local/share/changeguard/changeguard.sqlite3` (`CHANGEGUARD_DATABASE` to override).
+
+### Verification
+- Full test suite: 189 passed. 5 bubblewrap verification tests fail inside a nested sandbox (`bwrap: loopback: Failed RTM_NEWADDR`); this predates these changes.
+- Manual end-to-end runs against a real PR: deterministic report, Gemini investigation report, evidence ingestion affecting the risk score, `impact` on a local repository, and the demo `/api/analyze` endpoint.

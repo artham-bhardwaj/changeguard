@@ -47,7 +47,7 @@ def test_local_demo_rejects_invalid_analysis_input_without_github_access():
     request = Request(
         f"http://127.0.0.1:{server.server_port}/api/analyze",
         data=json.dumps({"repository": "../invalid/repo", "pull_number": 1}).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-ChangeGuard": "1"},
         method="POST",
     )
     try:

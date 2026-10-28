@@ -9,10 +9,10 @@ from urllib.parse import urlsplit
 import tree_sitter_java
 from tree_sitter import Language, Node, Parser
 
-from changeguard.code_intelligence.java import ChangedLineRange, JavaSymbol, TYPE_NODES
+from changeguard.code_intelligence.java import ChangedLineRange, JavaSymbol, TYPE_NODES, line_range_intersects
 
 HttpMethod = Literal[
-    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "UNKNOWN"
+    "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE", "ANY", "UNKNOWN"
 ]
 RelationshipStatus = Literal["AMBIGUOUS", "UNRESOLVED"]
 _HTTP_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE"}
@@ -173,8 +173,11 @@ class ApiContractMapper:
         changed_lines: tuple[ChangedLineRange, ...],
         file_level_changes: tuple[str, ...] = (),
         omitted_frontend_files: int = 0,
+        extra_endpoints: tuple[ApiEndpoint, ...] = (),
     ) -> ApiImpact:
-        endpoints = self._extract_endpoints(java_sources, symbols, revision)
+        """``extra_endpoints`` are backend endpoints found outside Spring (FastAPI, Flask,
+        Express, Next.js)."""
+        endpoints = [*self._extract_endpoints(java_sources, symbols, revision), *extra_endpoints]
         bounded_frontend, bounded_omissions = self._bounded_frontend_sources(frontend_sources)
         consumers = self._extract_consumers(bounded_frontend)
         omitted_frontend_files += bounded_omissions
@@ -201,7 +204,7 @@ class ApiContractMapper:
             method_candidates = [
                 endpoint
                 for endpoint in endpoints
-                if endpoint.http_method == consumer.http_method
+                if endpoint.http_method in {consumer.http_method, "ANY"}
             ]
             exact_matches = [
                 endpoint
@@ -232,7 +235,7 @@ class ApiContractMapper:
                     ApiRelationshipIssue(
                         consumer.consumer_id,
                         "UNRESOLVED",
-                        "The Spring endpoint was extracted but could not be linked to a Java provider symbol.",
+                        "The endpoint was extracted but could not be linked to its handler function.",
                         (endpoint.endpoint_id,),
                         (consumer_ref, f"api-endpoint:{endpoint.endpoint_id}"),
                     )
@@ -785,10 +788,7 @@ def _routes_match(endpoint_route: str, consumer_route: str) -> bool:
 
 
 def _line_ranges_intersect(start: int, end: int, changed: ChangedLineRange) -> bool:
-    if changed.new_count <= 0:
-        return False
-    changed_end = changed.new_start + changed.new_count - 1
-    return start <= changed_end and changed.new_start <= end
+    return line_range_intersects(start, end, changed)
 
 
 def _type_start_line(method: Node, source: bytes) -> int:
@@ -821,6 +821,9 @@ def _decode_js_string(value: str) -> tuple[str | None, bool]:
     quote = value[0]
     body = value[1:-1]
     if quote == "`" and "${" in body:
+        parameterized = _template_path_parameters(body)
+        if parameterized is not None:
+            return parameterized, False
         return body.split("${", 1)[0], True
     if quote == "`":
         return re.sub(r"\\([\\`])", r"\1", body), False
@@ -828,6 +831,42 @@ def _decode_js_string(value: str) -> tuple[str | None, bool]:
         return ast.literal_eval(value), False
     except (ValueError, SyntaxError, UnicodeDecodeError):
         return None, True
+
+
+def _template_path_parameters(body: str) -> str | None:
+    """`/api/orders/${order.id}?x=${y}` -> `/api/orders/{id}`.
+
+    Only substitutions that fill a whole path segment become parameters; anything else
+    (a base-URL prefix, part of a segment) returns None so the URL stays dynamic.
+    """
+    result: list[str] = []
+    index = 0
+    while index < len(body):
+        if body[index] in "?#":
+            break
+        if body.startswith("${", index):
+            depth, end = 0, index + 2
+            while end < len(body):
+                if body[end] == "{":
+                    depth += 1
+                elif body[end] == "}":
+                    if depth == 0:
+                        break
+                    depth -= 1
+                end += 1
+            if end >= len(body):
+                return None
+            before = "".join(result)
+            after = body[end + 1:end + 2]
+            if not before.endswith("/") or after not in {"", "/", "?", "#"}:
+                return None
+            names = re.findall(r"[A-Za-z_$][\w$]*", body[index + 2:end])
+            result.append("{" + (names[-1] if names else "param").strip("$") + "}")
+            index = end + 1
+            continue
+        result.append(body[index])
+        index += 1
+    return "".join(result)
 
 
 def _static_constants(

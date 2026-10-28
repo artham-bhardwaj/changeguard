@@ -52,12 +52,20 @@ class RiskEngine:
             score = None
             level = "UNKNOWN"
 
+        level_before_triggers = level
+        level = self._apply_trigger_floor(level, context.review_triggers)
+
         total_weight = sum(factor.weight for factor in factors)
         coverage = round(active_weight / total_weight, 4) if total_weight else 0.0
         uncertainties = tuple(
             factor.reason for factor in factors if factor.state != "known"
         )
         recommendations = self._recommendations(factors)
+        if context.review_triggers:
+            recommendations = (
+                "Have a senior developer review this change before merging (see review triggers).",
+                *recommendations,
+            )
         evidence = self._evidence(context)
         metrics: dict[str, float | int | str | None] = {
             "scoring_version": "1",
@@ -66,6 +74,8 @@ class RiskEngine:
             "configured_weight": round(total_weight, 2),
             "score_interpretation": "weighted average of available signals",
         }
+        if level != level_before_triggers:
+            metrics["level_before_review_triggers"] = level_before_triggers
         return RiskAssessment(
             level,
             score,
@@ -74,7 +84,17 @@ class RiskEngine:
             uncertainties,
             recommendations,
             metrics,
+            tuple(context.review_triggers),
         )
+
+    _LEVEL_ORDER = ("UNKNOWN", "LOW", "MEDIUM", "HIGH", "CRITICAL")
+
+    def _apply_trigger_floor(self, level: str, triggers) -> str:
+        """Review triggers raise the level to at least their severity; they never lower it."""
+        floor = max(
+            (self._LEVEL_ORDER.index(trigger.severity) for trigger in triggers), default=0
+        )
+        return self._LEVEL_ORDER[max(self._LEVEL_ORDER.index(level), floor)]
 
     def _complexity(self, context: ChangeContext) -> RiskFactor:
         change = context.change

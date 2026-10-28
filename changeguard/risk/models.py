@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 import math
 from typing import Literal
 
+from changeguard.risk.triggers import ReviewTrigger
+
 SignalState = Literal["known", "unknown", "uncertain"]
 RiskLevel = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"]
 
@@ -81,6 +83,7 @@ class ChangeContext:
     historical_evidence: HistoricalEvidenceSignals | None = None
     tests: TestSignals | None = None
     runtime: RuntimeSignals | None = None
+    review_triggers: tuple[ReviewTrigger, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -166,6 +169,7 @@ class RiskAssessment:
     uncertainties: tuple[str, ...]
     recommendations: tuple[str, ...]
     metrics: dict[str, float | int | str | None]
+    review_triggers: tuple[ReviewTrigger, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)

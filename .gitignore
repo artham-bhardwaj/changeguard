@@ -4,5 +4,9 @@ __pycache__/
 .venv/
 .env
 .env.*
+!.env.example
 *.sqlite3
 *.db
+*.egg-info/
+build/
+dist/

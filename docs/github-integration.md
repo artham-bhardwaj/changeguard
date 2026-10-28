@@ -9,6 +9,7 @@ python -m changeguard.cli pr analyze OWNER/REPO#NUMBER --json
 python -m changeguard.cli pr analyze OWNER/REPO#NUMBER --persist
 python -m changeguard.cli pr analyze OWNER/REPO#NUMBER --verify
 python -m changeguard.cli pr analyze OWNER/REPO#NUMBER --llm
+python -m changeguard.cli pr analyze OWNER/REPO#NUMBER --llm --llm-provider gemini
 ```
 
 The command emits JSON with `--json`, or a concise status and summary otherwise. A failed operation produces a structured error and a nonzero CLI exit. `--refresh-head` is enabled by default; `--no-refresh-head` disables the post-analysis check, in which case `current_head_sha` remains null rather than implying a fresh status. `--verify` opts in to the existing safe verification executor, and `--llm` opts in to the existing local Ollama path. Neither is needed for deterministic analysis.

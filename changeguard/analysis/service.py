@@ -23,6 +23,8 @@ from changeguard.analysis.models import (
 )
 from changeguard.code_intelligence.api import ApiContractMapper, ApiImpact
 from changeguard.code_intelligence.java import ChangedLineRange, JavaAnalysis, JavaSymbolMapper
+from changeguard.code_intelligence.polyglot import PolyglotSymbolMapper, propagate_through_api
+from changeguard.code_intelligence.python_lang import is_python_source
 from changeguard.evidence.models import EvidenceBundle
 from changeguard.llm.agent import BoundedInvestigationAgent
 from changeguard.llm.ollama import OllamaError
@@ -30,6 +32,7 @@ from changeguard.llm.report import ReportGenerationResult
 from changeguard.mcp.adapter import MCPToolError
 from changeguard.models.schemas import AnalysisState, DiffResult
 from changeguard.risk.engine import RiskEngine
+from changeguard.risk.triggers import ReviewTrigger, detect_review_triggers
 from changeguard.risk.models import (
     BlastRadiusSignals,
     ChangeContext,
@@ -50,6 +53,9 @@ from changeguard.verification.models import (
     VerificationResult,
 )
 from changeguard.verification.planner import VerificationPlanner
+
+
+MAX_PYTHON_FILES = 400
 
 
 class AnalysisToolPort(ToolPort, JavaSourcePort, RevisionReadPort, Protocol):
@@ -79,7 +85,7 @@ class ChangeAnalysisService:
     ) -> None:
         self.store = store
         self.tools = tools or LocalTools(store)
-        self.java_mapper = java_mapper or JavaSymbolMapper()
+        self.java_mapper = java_mapper or PolyglotSymbolMapper()
         self.api_mapper = api_mapper or ApiContractMapper()
         self.risk_engine = risk_engine or RiskEngine()
         self.investigator = investigator
@@ -87,8 +93,10 @@ class ChangeAnalysisService:
         self.verification_executor = verification_executor or SafeVerificationExecutor()
 
     def analyze(
-        self, *, repo_path: str, base: str, head: str
+        self, *, repo_path: str, base: str, head: str, evidence_repository: str | None = None
     ) -> ChangeGuardAnalysis:
+        """Analyze ``base..head``. ``evidence_repository`` scopes historical evidence search
+        (for example ``owner/repo``); it defaults to ``repo_path``."""
         trace: list[ChangeStageTrace] = []
         uncertainties: list[str] = []
         analysis_id = str(uuid4())
@@ -137,7 +145,12 @@ class ChangeAnalysisService:
         frontend_changed_files = tuple(
             path for path in diff.changed_files if self._is_frontend_source(path)
         )
-        api_relevant_change = bool(java_changed_files or frontend_changed_files)
+        python_changed_files = tuple(
+            path for path in diff.changed_files if is_python_source(path)
+        )
+        api_relevant_change = bool(
+            java_changed_files or frontend_changed_files or python_changed_files
+        )
         code_analysis: JavaAnalysis | None = None
         blast_radius: BlastRadiusResult | None = None
         api_impact: ApiImpact | None = None
@@ -176,13 +189,43 @@ class ChangeAnalysisService:
                         },
                     )
                 )
+                frontend_sources: dict[str, str] = {}
+                omitted_frontend_files = 0
+                frontend_error: Exception | None = None
+                try:
+                    frontend_sources, omitted_frontend_files = self._frontend_sources(
+                        repo_path, snapshot.revision
+                    )
+                except (MCPToolError, RuntimeError, ValueError) as error:
+                    frontend_error = error
+                polyglot = isinstance(self.java_mapper, PolyglotSymbolMapper)
+                python_sources: dict[str, str] = {}
+                omitted_python_files = 0
+                if polyglot:
+                    try:
+                        python_sources, omitted_python_files = self._revision_sources(
+                            repo_path, snapshot.revision, is_python_source,
+                            self._excluded_python_source, MAX_PYTHON_FILES,
+                        )
+                    except (MCPToolError, RuntimeError, ValueError) as error:
+                        uncertainties.append(f"Python source snapshot unavailable: {error}")
                 intelligence_started = time.perf_counter()
-                code_analysis = self.java_mapper.analyze(
-                    snapshot.sources,
-                    changed_lines,
-                    diff.changed_files,
-                    omitted_sources=snapshot.omitted_files,
-                )
+                if polyglot:
+                    code_analysis = self.java_mapper.analyze(
+                        {**snapshot.sources, **python_sources, **frontend_sources},
+                        changed_lines,
+                        diff.changed_files,
+                        omitted_sources=snapshot.omitted_files,
+                        omitted_python=omitted_python_files,
+                        omitted_script=omitted_frontend_files,
+                    )
+                else:
+                    code_analysis = self.java_mapper.analyze(
+                        snapshot.sources,
+                        changed_lines,
+                        diff.changed_files,
+                        omitted_sources=snapshot.omitted_files,
+                    )
                 if diff_is_truncated:
                     file_level_changes = tuple(sorted(java_changed_files))
                 trace.append(
@@ -260,16 +303,19 @@ class ChangeAnalysisService:
                     )
 
                 api_started = time.perf_counter()
-                try:
-                    frontend_sources, omitted_frontend_files = self._frontend_sources(
-                        repo_path, snapshot.revision
-                    )
-                except (MCPToolError, RuntimeError, ValueError) as error:
-                    uncertainties.append(f"API source snapshot unavailable: {error}")
+                if frontend_error is not None:
+                    uncertainties.append(f"API source snapshot unavailable: {frontend_error}")
                     trace.append(
-                        self._trace("api_analysis", "unavailable", api_started, str(error))
+                        self._trace("api_analysis", "unavailable", api_started, str(frontend_error))
                     )
                 else:
+                    extra_endpoints = (
+                        self.java_mapper.endpoints(
+                            {**python_sources, **frontend_sources}, snapshot.revision
+                        )
+                        if polyglot
+                        else ()
+                    )
                     api_impact = self.api_mapper.analyze(
                         java_sources=snapshot.sources,
                         frontend_sources=frontend_sources,
@@ -279,6 +325,7 @@ class ChangeAnalysisService:
                         changed_lines=api_changed_lines,
                         file_level_changes=file_level_changes,
                         omitted_frontend_files=omitted_frontend_files,
+                        extra_endpoints=extra_endpoints,
                     )
                     api_incomplete = bool(
                         snapshot.omitted_files
@@ -315,6 +362,7 @@ class ChangeAnalysisService:
                         )
                     )
                     uncertainties.extend(api_impact.uncertainties)
+                    code_analysis = propagate_through_api(code_analysis, api_impact)
                 blast_radius = self._blast_radius(
                     code_analysis,
                     changed_symbols,
@@ -347,7 +395,9 @@ class ChangeAnalysisService:
             from changeguard.evidence.query import build_change_query
 
             query = build_change_query(query_state, diff.diff_text)
-            history = self.tools.search_evidence(query, 5, repository=repo_path)
+            history = self.tools.search_evidence(
+                query, 5, repository=evidence_repository or repo_path
+            )
         except (MCPToolError, RuntimeError, sqlite3.Error, ValueError) as error:
             history = None
             historical_signals = HistoricalEvidenceSignals("unknown")
@@ -414,6 +464,12 @@ class ChangeAnalysisService:
             diff_is_truncated,
         )
         risk_started = time.perf_counter()
+        review_triggers = detect_review_triggers(
+            diff.diff_text,
+            diff.changed_files,
+            (item.qualified_name for item in changed_symbols),
+            blast_radius.signals.directly_affected_symbols if blast_radius else None,
+        )
         risk = self.risk_engine.assess(
             ChangeContext(
                 change=change_metrics,
@@ -421,6 +477,7 @@ class ChangeAnalysisService:
                 historical_evidence=historical_signals,
                 tests=test_signals,
                 runtime=runtime_signals,
+                review_triggers=review_triggers,
             )
         )
         trace.append(
@@ -592,9 +649,11 @@ class ChangeAnalysisService:
             plan = analysis.verification_plan
         verification = self.verification_executor.execute(plan)
         test_signals = self._test_signals(verification)
-        verified_risk = self.risk_engine.assess(
-            self._risk_context(analysis, test_signals)
-        )
+        context = self._risk_context(analysis, test_signals)
+        failed_trigger = self._failed_tests_trigger(verification)
+        if failed_trigger is not None:
+            context = replace(context, review_triggers=(*context.review_triggers, failed_trigger))
+        verified_risk = self.risk_engine.assess(context)
         uncertainties = list(analysis.uncertainties)
         uncertainties.extend(verification.limitations)
         if verification.status != "PASSED":
@@ -721,6 +780,19 @@ class ChangeAnalysisService:
             ),
         )
 
+    @staticmethod
+    def _failed_tests_trigger(result: VerificationResult) -> ReviewTrigger | None:
+        failed = [check for check in result.checks if check.status in {"FAILED", "TIMED_OUT"}]
+        if not failed:
+            return None
+        names: list[str] = []
+        for check in failed:
+            names.extend(re.findall(r"^_+ (\S+?)(?:\[.*\])? _+$", check.output_summary, re.M))
+        what = ", ".join(f"`{name}`" for name in dict.fromkeys(names[:3])) or ", ".join(
+            f"{check.check.operation} {' '.join(check.check.targets)[:80]}" for check in failed[:2]
+        )
+        return ReviewTrigger("tests_failed", "HIGH", f"Verification checks fail on this change: {what}")
+
     def _test_signals(self, result: VerificationResult) -> TestSignals:
         pytest_results = [
             check
@@ -796,6 +868,7 @@ class ChangeAnalysisService:
             historical_evidence=historical,
             tests=tests,
             runtime=analysis.runtime_signals,
+            review_triggers=initial.review_triggers,
         )
 
     def _blast_radius(
@@ -884,20 +957,16 @@ class ChangeAnalysisService:
         uncertainties = list(analysis.uncertainties if analysis else ())
         if api_impact:
             uncertainties.extend(api_impact.uncertainties)
+        # When some changed files could not be analyzed, the counts are a lower bound:
+        # they are still scored, and `unresolved` stays None so the factor is "uncertain".
         signal = BlastRadiusSignals(
-            directly_affected_symbols=(
-                len(java_direct) if has_seeds and not incomplete else None
-            ),
-            indirectly_affected_symbols=(
-                len(java_indirect) if has_seeds and not incomplete else None
-            ),
-            affected_files=len(affected_files) if has_seeds and not incomplete else None,
-            dependency_depth=(
-                java_depth if has_seeds and not incomplete else None
-            ),
+            directly_affected_symbols=len(java_direct) if has_seeds else None,
+            indirectly_affected_symbols=len(java_indirect) if has_seeds else None,
+            affected_files=len(affected_files) if has_seeds else None,
+            dependency_depth=java_depth if has_seeds else None,
             affected_callers=(
                 len(set(java_direct + java_indirect)) + len(api_consumers) + len(api_providers)
-                if has_seeds and not incomplete
+                if has_seeds
                 else None
             ),
             affected_components=None,
@@ -909,7 +978,7 @@ class ChangeAnalysisService:
         )
         if not has_seeds:
             uncertainties.append(
-                "No changed Java symbol or API relationship was mapped; numeric blast-radius counts are unknown."
+                "No changed function, class or API relationship was mapped; numeric blast-radius counts are unknown."
             )
         if affected_packages:
             uncertainties.append(
@@ -1045,6 +1114,12 @@ class ChangeAnalysisService:
                         new_line += 1
                     new_remaining -= 1
                 elif line.startswith("-"):
+                    # Record where removed lines were, as a zero-length range after the
+                    # previous new-file line, so removing a check still marks its endpoint.
+                    if current_path is not None and new_line is not None:
+                        point = ChangedLineRange(current_path, new_line - 1, 1, new_line - 1, 0)
+                        if not ranges or ranges[-1] != point:
+                            ranges.append(point)
                     old_remaining -= 1
                 elif line.startswith(" "):
                     if new_line is not None:
@@ -1185,6 +1260,40 @@ class ChangeAnalysisService:
             total_bytes += size
         return selected, omitted
 
+    def _revision_sources(
+        self, repo_path: str, revision: str, include, exclude, max_files: int,
+        max_file_bytes: int = 256 * 1024, max_total_bytes: int = 8 * 1024 * 1024,
+    ) -> tuple[dict[str, str], int]:
+        paths = self.tools.revision_files(repo_path, revision, max_files=10_000)
+        candidates = [path for path in paths if include(path) and not exclude(path)]
+        selected: dict[str, str] = {}
+        omitted = 0
+        total = 0
+        for index, path in enumerate(candidates):
+            if len(selected) >= max_files:
+                omitted += len(candidates) - index
+                break
+            try:
+                source = self.tools.revision_file(repo_path, revision, path, max_bytes=max_file_bytes)
+            except (MCPToolError, RuntimeError, ValueError):
+                omitted += 1
+                continue
+            size = len(source.encode("utf-8"))
+            if total + size > max_total_bytes:
+                omitted += 1
+                continue
+            selected[path] = source
+            total += size
+        return selected, omitted
+
+    @staticmethod
+    def _excluded_python_source(path: str) -> bool:
+        parts = {part.casefold() for part in path.split("/")}
+        return bool(parts & {
+            ".git", ".venv", "venv", "env", ".tox", ".nox", "site-packages", "build", "dist",
+            "node_modules", "__pycache__", ".eggs",
+        })
+
     @staticmethod
     def _is_frontend_source(path: str) -> bool:
         return path.casefold().endswith(
@@ -1212,8 +1321,15 @@ class ChangeAnalysisService:
         )
         if java_files:
             summary += f"; {len(java_files)} Java file(s)"
+        python_files = [path for path in diff.changed_files if is_python_source(path)]
+        if python_files:
+            summary += f"; {len(python_files)} Python file(s)"
+        script_files = [path for path in diff.changed_files if self._is_frontend_source(path)]
+        if script_files:
+            summary += f"; {len(script_files)} TypeScript/JavaScript file(s)"
         if changed_symbols:
-            summary += f"; {len(changed_symbols)} Java symbol declaration(s) intersect changed lines"
+            language = "Java " if java_files and not python_files and not script_files else ""
+            summary += f"; {len(changed_symbols)} {language}symbol declaration(s) intersect changed lines"
         return summary + "."
 
     def _trace(
